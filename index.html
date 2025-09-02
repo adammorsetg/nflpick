@@ -244,16 +244,19 @@
             setPicksSubmitted(true);
             setSubmitMessage("Picks submitted successfully!");
           } else {
-            setModalContent(`Error submitting picks: ${result.error}`);
+            // Provide a more specific error message from the Apps Script response
+            setModalContent(`Error submitting picks: ${result.error || 'Unknown error'}`);
             setModalOpen(true);
           }
         } else {
-          setModalContent("An error occurred while communicating with the Google Apps Script.");
+          // If the server response is not okay, provide status and status text
+          const errorText = await response.text();
+          setModalContent(`Error submitting picks. Server responded with status: ${response.status} ${response.statusText}.`);
           setModalOpen(true);
         }
       } catch (e) {
         console.error("Error submitting picks: ", e);
-        setModalContent("An error occurred while submitting your picks. Please check the Apps Script URL.");
+        setModalContent("A network error occurred while submitting your picks. Please check your internet connection.");
         setModalOpen(true);
       }
     };
