@@ -1,420 +1,450 @@
-import React, { useState, useEffect } from 'react';
-
-const PickemApp = () => {
-  // We're no longer using Firebase, so we'll generate a unique ID for each user.
-  const [userId] = useState(() => {
-    let id = localStorage.getItem('nfl_pickem_user_id');
-    if (!id) {
-      id = 'user_' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem('nfl_pickem_user_id', id);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NFL Pick'em</title>
+  <!-- Tailwind CSS from CDN for styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React and ReactDOM from CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel for JSX transformation -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
     }
-    return id;
-  });
+  </style>
+</head>
+<body class="bg-gray-900">
 
-  const [games, setGames] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedPicks, setSelectedPicks] = useState([]);
-  const [picksSubmitted, setPicksSubmitted] = useState(false);
-  const [submitMessage, setSubmitMessage] = useState('');
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalContent, setModalContent] = useState('');
-  const [username, setUsername] = useState('');
-  const [appsScriptUrl, setAppsScriptUrl] = useState('');
-  const [currentWeek, setCurrentWeek] = useState(0);
+<div id="root"></div>
 
-  const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTDvan0KHZpX7RT7ZTPOBZDvBweF8V82caTcqTIPDuEnhJNmLFVL8QON6IZJCaBepJY1EjL1zBYYsuf/pub?gid=0&single=true&output=csv';
-
-  // Function to get the current week number and calculate the next deadline.
-  const getWeeklyInfo = () => {
-    const today = new Date();
-    // Week 1 starts on Sep 5, 2024 (Thursday) - using 2025 as the example year.
-    const weekOneStart = new Date('2025-09-02T08:00:00-06:00'); // Tuesday 8am CST
-    const msInWeek = 7 * 24 * 60 * 60 * 1000;
-    const weekNumber = Math.floor((today.getTime() - weekOneStart.getTime()) / msInWeek) + 1;
-    
-    const deadlineDate = new Date(weekOneStart.getTime() + (msInWeek * (weekNumber -1)));
-    const daysUntilSaturday = 6 - deadlineDate.getDay(); // 6 is Saturday
-    deadlineDate.setDate(deadlineDate.getDate() + daysUntilSaturday);
-    deadlineDate.setHours(18, 0, 0, 0); // 6:00 PM CST
-    
-    return { weekNumber, deadline: deadlineDate };
-  };
-
-  const { weekNumber, deadline } = getWeeklyInfo();
-  
-  // Function to fetch and parse game data from the Google Sheet
-  const fetchGames = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch(GOOGLE_SHEET_URL);
-      if (!response.ok) {
-        throw new Error('Failed to fetch game data.');
+<script type="text/babel">
+  const { useState, useEffect } = React;
+  const PickemApp = () => {
+    // We're no longer using Firebase, so we'll generate a unique ID for each user.
+    const [userId] = useState(() => {
+      let id = localStorage.getItem('nfl_pickem_user_id');
+      if (!id) {
+        id = 'user_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('nfl_pickem_user_id', id);
       }
-      const csvText = await response.text();
-      const rows = csvText.trim().split('\n');
-      const headers = rows[0].split(',').map(header => header.trim());
-      const gameData = rows.slice(1).map(row => {
-        const values = row.split(',').map(cell => cell.trim());
-        const game = {};
-        headers.forEach((header, index) => {
-          game[header] = values[index];
-        });
-        return game;
-      });
-      setGames(gameData);
-      setCurrentWeek(weekNumber);
-    } catch (e) {
-      console.error("Error fetching game data:", e);
-      setSubmitMessage("Failed to load game data. Please try again later.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Check if a game is in the past
-  const isGamePast = (game) => {
-    // Parse date parts
-    const [monthStr, dayStr, yearStr] = game.date.split('/');
-    const month = parseInt(monthStr, 10);
-    const day = parseInt(dayStr, 10);
-    const year = parseInt(yearStr, 10);
-    const fullYear = year < 100 ? 2000 + year : year;
-
-    // Parse time parts
-    const timeMatch = game.time.match(/(\d+):(\d+) (\w+)/);
-    if (!timeMatch) return false; // Invalid time format
-    let hours = Number(timeMatch[1]);
-    const minutes = Number(timeMatch[2]);
-    const period = timeMatch[3];
-
-    // Convert to 24-hour format
-    if (period.toUpperCase() === 'PM' && hours !== 12) {
-      hours += 12;
-    } else if (period.toUpperCase() === 'AM' && hours === 12) {
-      hours = 0;
-    }
-
-    // Create the game date object using the local timezone
-    const gameDate = new Date(fullYear, month - 1, day, hours, minutes, 0);
-    const now = new Date();
-    
-    const isPast = gameDate.getTime() < now.getTime();
-    return isPast;
-  };
-
-  // Check if the overall picking deadline has passed
-  const isDeadlinePassed = () => {
-    return new Date().getTime() > deadline.getTime();
-  };
-
-  // Fetch games and load local storage on component mount
-  useEffect(() => {
-    fetchGames();
-    const storedPicks = localStorage.getItem(`picks_week_${currentWeek}_${userId}`);
-    if (storedPicks) {
-      try {
-        const parsedPicks = JSON.parse(storedPicks);
-        setSelectedPicks(parsedPicks);
-        setPicksSubmitted(true);
-      } catch (e) {
-        console.error("Failed to parse stored picks:", e);
-        localStorage.removeItem(`picks_week_${currentWeek}_${userId}`);
-      }
-    }
-    const storedUsername = localStorage.getItem('nfl_pickem_username');
-    if (storedUsername) {
-      setUsername(storedUsername);
-    }
-  }, [userId, currentWeek]);
-
-  const handlePickSelect = (gameId, teamType) => {
-    if (picksSubmitted || isDeadlinePassed()) return;
-
-    setSelectedPicks(prevPicks => {
-      const existingPickIndex = prevPicks.findIndex(p => p.gameId === gameId);
-
-      // If a pick for this game already exists
-      if (existingPickIndex > -1) {
-        // If the user clicks the same team again, deselect it
-        if (prevPicks[existingPickIndex].winner === teamType) {
-          return prevPicks.filter(p => p.gameId !== gameId);
-        } else {
-          // If the user clicks the other team, update the pick
-          const newPicks = [...prevPicks];
-          newPicks[existingPickIndex].winner = teamType;
-          return newPicks;
-        }
-      } else {
-        // If it's a new pick and the user has less than 5 picks
-        if (prevPicks.length < 5) {
-          return [...prevPicks, { gameId, winner: teamType }];
-        }
-      }
-      return prevPicks;
+      return id;
     });
-  };
 
-  const handleSubmitPicks = async () => {
-    if (!appsScriptUrl) {
-      setModalContent("Please enter the Google Apps Script URL first.");
-      setModalOpen(true);
-      return;
-    }
+    const [games, setGames] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [selectedPicks, setSelectedPicks] = useState([]);
+    const [picksSubmitted, setPicksSubmitted] = useState(false);
+    const [submitMessage, setSubmitMessage] = useState('');
+    const [modalOpen, setModalOpen] = useState(false);
+    const [modalContent, setModalContent] = useState('');
+    const [username, setUsername] = useState('');
+    const [appsScriptUrl, setAppsScriptUrl] = useState('');
+    const [currentWeek, setCurrentWeek] = useState(0);
+
+    const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTDvan0KHZpX7RT7ZTPOBZDvBweF8V82caTcqTIPDuEnhJNmLFVL8QON6IZJCaBepJY1EjL1zBYYsuf/pub?gid=0&single=true&output=csv';
+
+    // Function to get the current week number and calculate the next deadline.
+    const getWeeklyInfo = () => {
+      const today = new Date();
+      // Week 1 starts on Sep 5, 2024 (Thursday) - using 2025 as the example year.
+      const weekOneStart = new Date('2025-09-02T08:00:00-06:00'); // Tuesday 8am CST
+      const msInWeek = 7 * 24 * 60 * 60 * 1000;
+      const weekNumber = Math.floor((today.getTime() - weekOneStart.getTime()) / msInWeek) + 1;
+      
+      const deadlineDate = new Date(weekOneStart.getTime() + (msInWeek * (weekNumber -1)));
+      const daysUntilSaturday = 6 - deadlineDate.getDay(); // 6 is Saturday
+      deadlineDate.setDate(deadlineDate.getDate() + daysUntilSaturday);
+      deadlineDate.setHours(18, 0, 0, 0); // 6:00 PM CST
+      
+      return { weekNumber, deadline: deadlineDate };
+    };
+
+    const { weekNumber, deadline } = getWeeklyInfo();
     
-    if (!username.trim()) {
-      setModalContent("Please enter a username.");
-      setModalOpen(true);
-      return;
-    }
+    // Function to fetch and parse game data from the Google Sheet
+    const fetchGames = async () => {
+      try {
+        setIsLoading(true);
+        const response = await fetch(GOOGLE_SHEET_URL);
+        if (!response.ok) {
+          throw new Error('Failed to fetch game data.');
+        }
+        const csvText = await response.text();
+        const rows = csvText.trim().split('\n');
+        const headers = rows[0].split(',').map(header => header.trim());
+        const gameData = rows.slice(1).map(row => {
+          const values = row.split(',').map(cell => cell.trim());
+          const game = {};
+          headers.forEach((header, index) => {
+            game[header] = values[index];
+          });
+          return game;
+        });
+        setGames(gameData);
+        setCurrentWeek(weekNumber);
+      } catch (e) {
+        console.error("Error fetching game data:", e);
+        setSubmitMessage("Failed to load game data. Please try again later.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-    if (selectedPicks.length !== 5) {
-      setModalContent("Please select exactly 5 games.");
-      setModalOpen(true);
-      return;
-    }
+    // Check if a game is in the past
+    const isGamePast = (game) => {
+      // Parse date parts
+      const [monthStr, dayStr, yearStr] = game.date.split('/');
+      const month = parseInt(monthStr, 10);
+      const day = parseInt(dayStr, 10);
+      const year = parseInt(yearStr, 10);
+      const fullYear = year < 100 ? 2000 + year : year;
 
-    if (picksSubmitted) {
-      setModalContent("Your picks have already been submitted and cannot be changed.");
-      setModalOpen(true);
-      return;
-    }
+      // Parse time parts
+      const timeMatch = game.time.match(/(\d+):(\d+) (\w+)/);
+      if (!timeMatch) return false; // Invalid time format
+      let hours = Number(timeMatch[1]);
+      const minutes = Number(timeMatch[2]);
+      const period = timeMatch[3];
 
-    if (isDeadlinePassed()) {
-      setModalContent("The deadline for submitting picks has passed.");
-      setModalOpen(true);
-      return;
-    }
+      // Convert to 24-hour format
+      if (period.toUpperCase() === 'PM' && hours !== 12) {
+        hours += 12;
+      } else if (period.toUpperCase() === 'AM' && hours === 12) {
+        hours = 0;
+      }
 
-    try {
-      const picksToSave = selectedPicks.map(pick => {
-        const game = games.find(g => g.id === pick.gameId);
-        const selectedWinner = pick.winner === 'home' ? game.homeTeam : game.awayTeam;
-        return {
-          gameId: pick.gameId,
-          homeTeam: game.homeTeam,
-          awayTeam: game.awayTeam,
-          selectedWinner: selectedWinner,
-        };
-      });
+      // Create the game date object using the local timezone
+      const gameDate = new Date(fullYear, month - 1, day, hours, minutes, 0);
+      const now = new Date();
+      
+      const isPast = gameDate.getTime() < now.getTime();
+      return isPast;
+    };
 
-      // Prepare data for the Apps Script
-      const data = {
-        userId,
-        username,
-        timestamp: new Date().toISOString(),
-        picks: picksToSave,
-        week: currentWeek
-      };
+    // Check if the overall picking deadline has passed
+    const isDeadlinePassed = () => {
+      return new Date().getTime() > deadline.getTime();
+    };
 
-      // Send a POST request to the Apps Script URL
-      const response = await fetch(appsScriptUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.status === 'success') {
-          // Save to local storage to prevent resubmission this week
-          localStorage.setItem(`picks_week_${currentWeek}_${userId}`, JSON.stringify(selectedPicks));
-          localStorage.setItem('nfl_pickem_username', username);
-          setModalContent("Picks submitted successfully to Google Sheet!");
-          setModalOpen(true);
+    // Fetch games and load local storage on component mount
+    useEffect(() => {
+      fetchGames();
+      const storedPicks = localStorage.getItem(`picks_week_${currentWeek}_${userId}`);
+      if (storedPicks) {
+        try {
+          const parsedPicks = JSON.parse(storedPicks);
+          setSelectedPicks(parsedPicks);
           setPicksSubmitted(true);
-          setSubmitMessage("Picks submitted successfully!");
+        } catch (e) {
+          console.error("Failed to parse stored picks:", e);
+          localStorage.removeItem(`picks_week_${currentWeek}_${userId}`);
+        }
+      }
+      const storedUsername = localStorage.getItem('nfl_pickem_username');
+      if (storedUsername) {
+        setUsername(storedUsername);
+      }
+    }, [userId, currentWeek]);
+
+    const handlePickSelect = (gameId, teamType) => {
+      if (picksSubmitted || isDeadlinePassed()) return;
+
+      setSelectedPicks(prevPicks => {
+        const existingPickIndex = prevPicks.findIndex(p => p.gameId === gameId);
+
+        // If a pick for this game already exists
+        if (existingPickIndex > -1) {
+          // If the user clicks the same team again, deselect it
+          if (prevPicks[existingPickIndex].winner === teamType) {
+            return prevPicks.filter(p => p.gameId !== gameId);
+          } else {
+            // If the user clicks the other team, update the pick
+            const newPicks = [...prevPicks];
+            newPicks[existingPickIndex].winner = teamType;
+            return newPicks;
+          }
         } else {
-          setModalContent(`Error submitting picks: ${result.error}`);
+          // If it's a new pick and the user has less than 5 picks
+          if (prevPicks.length < 5) {
+            return [...prevPicks, { gameId, winner: teamType }];
+          }
+        }
+        return prevPicks;
+      });
+    };
+
+    const handleSubmitPicks = async () => {
+      if (!appsScriptUrl) {
+        setModalContent("Please enter the Google Apps Script URL first.");
+        setModalOpen(true);
+        return;
+      }
+      
+      if (!username.trim()) {
+        setModalContent("Please enter a username.");
+        setModalOpen(true);
+        return;
+      }
+
+      if (selectedPicks.length !== 5) {
+        setModalContent("Please select exactly 5 games.");
+        setModalOpen(true);
+        return;
+      }
+
+      if (picksSubmitted) {
+        setModalContent("Your picks have already been submitted and cannot be changed.");
+        setModalOpen(true);
+        return;
+      }
+
+      if (isDeadlinePassed()) {
+        setModalContent("The deadline for submitting picks has passed.");
+        setModalOpen(true);
+        return;
+      }
+
+      try {
+        const picksToSave = selectedPicks.map(pick => {
+          const game = games.find(g => g.id === pick.gameId);
+          const selectedWinner = pick.winner === 'home' ? game.homeTeam : game.awayTeam;
+          return {
+            gameId: pick.gameId,
+            homeTeam: game.homeTeam,
+            awayTeam: game.awayTeam,
+            selectedWinner: selectedWinner,
+          };
+        });
+
+        // Prepare data for the Apps Script
+        const data = {
+          userId,
+          username,
+          timestamp: new Date().toISOString(),
+          picks: picksToSave,
+          week: currentWeek
+        };
+
+        // Send a POST request to the Apps Script URL
+        const response = await fetch(appsScriptUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.status === 'success') {
+            // Save to local storage to prevent resubmission this week
+            localStorage.setItem(`picks_week_${currentWeek}_${userId}`, JSON.stringify(selectedPicks));
+            localStorage.setItem('nfl_pickem_username', username);
+            setModalContent("Picks submitted successfully to Google Sheet!");
+            setModalOpen(true);
+            setPicksSubmitted(true);
+            setSubmitMessage("Picks submitted successfully!");
+          } else {
+            setModalContent(`Error submitting picks: ${result.error}`);
+            setModalOpen(true);
+          }
+        } else {
+          setModalContent("An error occurred while communicating with the Google Apps Script.");
           setModalOpen(true);
         }
-      } else {
-        setModalContent("An error occurred while communicating with the Google Apps Script.");
+      } catch (e) {
+        console.error("Error submitting picks: ", e);
+        setModalContent("An error occurred while submitting your picks. Please check the Apps Script URL.");
         setModalOpen(true);
       }
-    } catch (e) {
-      console.error("Error submitting picks: ", e);
-      setModalContent("An error occurred while submitting your picks. Please check the Apps Script URL.");
-      setModalOpen(true);
+    };
+
+    const closeModal = () => {
+      setModalOpen(false);
+      setModalContent('');
+    };
+
+    if (isLoading) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white text-center rounded-lg shadow-xl">
+          <svg className="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span className="ml-3 text-lg font-medium">Initializing...</span>
+        </div>
+      );
     }
-  };
 
-  const closeModal = () => {
-    setModalOpen(false);
-    setModalContent('');
-  };
-
-  if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white text-center rounded-lg shadow-xl">
-        <svg className="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        <span className="ml-3 text-lg font-medium">Initializing...</span>
-      </div>
-    );
-  }
+      <div className="bg-gray-900 min-h-screen text-white font-inter p-4 sm:p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-gray-800 p-6 rounded-3xl shadow-2xl border-2 border-gray-700">
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-center text-teal-400 mb-2">NFL Pick'em</h1>
+            <p className="text-center text-sm sm:text-base text-gray-400 mb-6">Select exactly 5 games for Week {currentWeek}.</p>
 
-  return (
-    <div className="bg-gray-900 min-h-screen text-white font-inter p-4 sm:p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-gray-800 p-6 rounded-3xl shadow-2xl border-2 border-gray-700">
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-center text-teal-400 mb-2">NFL Pick'em</h1>
-          <p className="text-center text-sm sm:text-base text-gray-400 mb-6">Select exactly 5 games for Week {currentWeek}.</p>
-
-          <div className="flex flex-col sm:flex-row justify-between items-center mb-6 text-sm sm:text-base">
-            <div className="bg-gray-700 rounded-full px-4 py-2 mb-2 sm:mb-0">
-              <span className="font-semibold">User ID:</span> <span className="text-gray-300 break-all">{userId}</span>
+            <div className="flex flex-col sm:flex-row justify-between items-center mb-6 text-sm sm:text-base">
+              <div className="bg-gray-700 rounded-full px-4 py-2 mb-2 sm:mb-0">
+                <span className="font-semibold">User ID:</span> <span className="text-gray-300 break-all">{userId}</span>
+              </div>
+              <div className={`font-semibold px-4 py-2 rounded-full text-center ${isDeadlinePassed() ? 'bg-red-500 text-white' : 'bg-teal-500 text-gray-900'}`}>
+                Deadline: Saturday {deadline.toLocaleDateString()} {deadline.toLocaleTimeString()}
+              </div>
             </div>
-            <div className={`font-semibold px-4 py-2 rounded-full text-center ${isDeadlinePassed() ? 'bg-red-500 text-white' : 'bg-teal-500 text-gray-900'}`}>
-              Deadline: Saturday {deadline.toLocaleDateString()} {deadline.toLocaleTimeString()}
-            </div>
-          </div>
 
-          <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-            <div className="w-full">
-              <label htmlFor="username" className="block text-sm font-medium text-gray-400 mb-1">
-                Enter your username
+            <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+              <div className="w-full">
+                <label htmlFor="username" className="block text-sm font-medium text-gray-400 mb-1">
+                  Enter your username
+                </label>
+                <input
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="e.g. TouchdownTommy"
+                  className={`w-full px-4 py-2 rounded-lg bg-gray-700 text-white placeholder-gray-500 border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 ${picksSubmitted ? 'cursor-not-allowed opacity-50' : ''}`}
+                  disabled={picksSubmitted}
+                />
+              </div>
+              <div className="w-full flex justify-center sm:justify-end items-center">
+                <button
+                  onClick={handleSubmitPicks}
+                  className={`w-full sm:max-w-xs px-6 py-3 rounded-full text-lg font-bold transition-all duration-300 transform hover:scale-105 shadow-lg
+                    ${selectedPicks.length === 5 && username.trim() !== '' && !picksSubmitted && !isDeadlinePassed()
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : 'bg-gray-500 text-gray-300 cursor-not-allowed'}
+                  `}
+                  disabled={selectedPicks.length !== 5 || !username.trim() || picksSubmitted || isDeadlinePassed()}
+                >
+                  {picksSubmitted ? 'Picks Submitted' : 'Submit Picks'}
+                </button>
+              </div>
+            </div>
+
+            <div className="w-full mb-6">
+              <label htmlFor="appScriptUrl" className="block text-sm font-medium text-gray-400 mb-1">
+                Google Apps Script URL
               </label>
               <input
-                id="username"
+                id="appScriptUrl"
                 type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. TouchdownTommy"
-                className={`w-full px-4 py-2 rounded-lg bg-gray-700 text-white placeholder-gray-500 border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 ${picksSubmitted ? 'cursor-not-allowed opacity-50' : ''}`}
-                disabled={picksSubmitted}
+                value={appsScriptUrl}
+                onChange={(e) => setAppsScriptUrl(e.target.value)}
+                placeholder="https://script.google.com/macros/s/AKfycbxjsgm96f3dc5vEBZOOS_nhJ0iCQHZVzzw0rXaEglJaeB6Mv3O6dcD2BSWpyCkaI3Oh/exec"
+                className="w-full px-4 py-2 rounded-lg bg-gray-700 text-white placeholder-gray-500 border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
-            <div className="w-full flex justify-center sm:justify-end items-center">
+            
+            <div className="mb-6 p-4 bg-gray-700 rounded-xl shadow-inner">
+              <h2 className="text-lg font-bold mb-2 text-teal-300">Your Current Picks ({selectedPicks.length}/5)</h2>
+              <ul className="space-y-2">
+                {selectedPicks.length > 0 ? (
+                  selectedPicks.map(pick => {
+                    const game = games.find(g => g.id === pick.gameId);
+                    const winningTeam = pick.winner === 'home' ? game.homeTeam : game.awayTeam;
+                    return (
+                      <li key={pick.gameId} className="flex items-center space-x-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        <span className="text-gray-200">{winningTeam}</span>
+                      </li>
+                    );
+                  })
+                ) : (
+                  <li className="text-gray-400">No games selected yet.</li>
+                )}
+              </ul>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {games.map(game => {
+                const isPast = isGamePast(game);
+                const isAwaySelected = selectedPicks.some(p => p.gameId === game.id && p.winner === 'away');
+                const isHomeSelected = selectedPicks.some(p => p.game.id === game.id && p.winner === 'home');
+                const isDisabled = isPast || picksSubmitted || isDeadlinePassed();
+
+                return (
+                  <div
+                    key={game.id}
+                    className={`relative p-4 rounded-xl transition-all duration-300 shadow-md
+                      ${isPast ? 'bg-gray-700 opacity-50 cursor-not-allowed' : 'bg-gray-700 border-2 border-gray-600'}
+                    `}
+                  >
+                    {isPast && (
+                      <div className="absolute top-2 right-2 px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-full">
+                        Game Started
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm text-gray-400">{game.date} - {game.time}</span>
+                      <span className="text-sm font-semibold text-yellow-300">{game.bettingLine}</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <button
+                        onClick={() => !isDisabled && handlePickSelect(game.id, 'away')}
+                        className={`flex-1 text-center py-2 px-4 rounded-lg font-bold transition-all duration-300
+                          ${isAwaySelected ? 'bg-green-600 text-white border-2 border-green-400' :
+                            isDisabled ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
+                            'bg-gray-600 text-gray-200 hover:bg-gray-500'}
+                        `}
+                        disabled={isDisabled}
+                      >
+                        {game.awayTeam}
+                      </button>
+                      <button
+                        onClick={() => !isDisabled && handlePickSelect(game.id, 'home')}
+                        className={`flex-1 text-center py-2 px-4 rounded-lg font-bold transition-all duration-300
+                          ${isHomeSelected ? 'bg-green-600 text-white border-2 border-green-400' :
+                            isDisabled ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
+                            'bg-gray-600 text-gray-200 hover:bg-gray-500'}
+                        `}
+                        disabled={isDisabled}
+                      >
+                        {game.homeTeam}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-col items-center mt-8">
+              {submitMessage && (
+                <p className="mt-4 text-center text-sm font-semibold text-green-400">{submitMessage}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Custom Modal for alerts */}
+        {modalOpen && (
+          <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+            <div className="bg-gray-800 p-6 rounded-xl shadow-2xl border-2 border-gray-700 max-w-sm w-full text-center">
+              <p className="text-white text-lg mb-4">{modalContent}</p>
               <button
-                onClick={handleSubmitPicks}
-                className={`w-full sm:max-w-xs px-6 py-3 rounded-full text-lg font-bold transition-all duration-300 transform hover:scale-105 shadow-lg
-                  ${selectedPicks.length === 5 && username.trim() !== '' && !picksSubmitted && !isDeadlinePassed()
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                    : 'bg-gray-500 text-gray-300 cursor-not-allowed'}
-                `}
-                disabled={selectedPicks.length !== 5 || !username.trim() || picksSubmitted || isDeadlinePassed()}
+                onClick={closeModal}
+                className="bg-teal-500 hover:bg-teal-600 text-gray-900 font-bold py-2 px-6 rounded-full transition-all duration-300"
               >
-                {picksSubmitted ? 'Picks Submitted' : 'Submit Picks'}
+                OK
               </button>
             </div>
           </div>
-
-          <div className="w-full mb-6">
-            <label htmlFor="appScriptUrl" className="block text-sm font-medium text-gray-400 mb-1">
-              Google Apps Script URL
-            </label>
-            <input
-              id="appScriptUrl"
-              type="text"
-              value={appsScriptUrl}
-              onChange={(e) => setAppsScriptUrl(e.target.value)}
-              placeholder="https://script.google.com/macros/s/AKfycbxjsgm96f3dc5vEBZOOS_nhJ0iCQHZVzzw0rXaEglJaeB6Mv3O6dcD2BSWpyCkaI3Oh/exec"
-              className="w-full px-4 py-2 rounded-lg bg-gray-700 text-white placeholder-gray-500 border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500"
-            />
-          </div>
-          
-          <div className="mb-6 p-4 bg-gray-700 rounded-xl shadow-inner">
-            <h2 className="text-lg font-bold mb-2 text-teal-300">Your Current Picks ({selectedPicks.length}/5)</h2>
-            <ul className="space-y-2">
-              {selectedPicks.length > 0 ? (
-                selectedPicks.map(pick => {
-                  const game = games.find(g => g.id === pick.gameId);
-                  const winningTeam = pick.winner === 'home' ? game.homeTeam : game.awayTeam;
-                  return (
-                    <li key={pick.gameId} className="flex items-center space-x-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      </svg>
-                      <span className="text-gray-200">{winningTeam}</span>
-                    </li>
-                  );
-                })
-              ) : (
-                <li className="text-gray-400">No games selected yet.</li>
-              )}
-            </ul>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {games.map(game => {
-              const isPast = isGamePast(game);
-              const isAwaySelected = selectedPicks.some(p => p.gameId === game.id && p.winner === 'away');
-              const isHomeSelected = selectedPicks.some(p => p.game.id === game.id && p.winner === 'home');
-              const isDisabled = isPast || picksSubmitted || isDeadlinePassed();
-
-              return (
-                <div
-                  key={game.id}
-                  className={`relative p-4 rounded-xl transition-all duration-300 shadow-md
-                    ${isPast ? 'bg-gray-700 opacity-50 cursor-not-allowed' : 'bg-gray-700 border-2 border-gray-600'}
-                  `}
-                >
-                  {isPast && (
-                    <div className="absolute top-2 right-2 px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-full">
-                      Game Started
-                    </div>
-                  )}
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-gray-400">{game.date} - {game.time}</span>
-                    <span className="text-sm font-semibold text-yellow-300">{game.bettingLine}</span>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <button
-                      onClick={() => !isDisabled && handlePickSelect(game.id, 'away')}
-                      className={`flex-1 text-center py-2 px-4 rounded-lg font-bold transition-all duration-300
-                        ${isAwaySelected ? 'bg-green-600 text-white border-2 border-green-400' :
-                          isDisabled ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
-                          'bg-gray-600 text-gray-200 hover:bg-gray-500'}
-                      `}
-                      disabled={isDisabled}
-                    >
-                      {game.awayTeam}
-                    </button>
-                    <button
-                      onClick={() => !isDisabled && handlePickSelect(game.id, 'home')}
-                      className={`flex-1 text-center py-2 px-4 rounded-lg font-bold transition-all duration-300
-                        ${isHomeSelected ? 'bg-green-600 text-white border-2 border-green-400' :
-                          isDisabled ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
-                          'bg-gray-600 text-gray-200 hover:bg-gray-500'}
-                      `}
-                      disabled={isDisabled}
-                    >
-                      {game.homeTeam}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex flex-col items-center mt-8">
-            {submitMessage && (
-              <p className="mt-4 text-center text-sm font-semibold text-green-400">{submitMessage}</p>
-            )}
-          </div>
-        </div>
+        )}
       </div>
+    );
+  };
 
-      {/* Custom Modal for alerts */}
-      {modalOpen && (
-        <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 p-6 rounded-xl shadow-2xl border-2 border-gray-700 max-w-sm w-full text-center">
-            <p className="text-white text-lg mb-4">{modalContent}</p>
-            <button
-              onClick={closeModal}
-              className="bg-teal-500 hover:bg-teal-600 text-gray-900 font-bold py-2 px-6 rounded-full transition-all duration-300"
-            >
-              OK
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
+  const container = document.getElementById('root');
+  const root = ReactDOM.createRoot(container);
+  root.render(<PickemApp />);
+</script>
 
-export default PickemApp;
+</body>
+</html>
