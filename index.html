@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFL Pick 'em App</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #121212;
+            color: #E0E0E0;
+        }
+        .container {
+            max-width: 800px;
+        }
+        .pick-card {
+            background-color: #1E1E1E;
+        }
+        .message-modal {
+            background-color: rgba(0, 0, 0, 0.7);
+        }
+        .message-box {
+            background-color: #2D2D2D;
+        }
+        .game-list-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .game-list-container::-webkit-scrollbar-track {
+            background: #121212;
+            border-radius: 10px;
+        }
+        .game-list-container::-webkit-scrollbar-thumb {
+            background: #4A5568;
+            border-radius: 10px;
+        }
+        .game-list-container::-webkit-scrollbar-thumb:hover {
+            background: #718096;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 flex flex-col items-center min-h-screen">
+    <div class="container mx-auto">
+        <h1 class="text-3xl md:text-4xl font-bold text-center mb-6 text-green-500">NFL Pick 'em</h1>
+        
+        <!-- User Status Section -->
+        <div class="bg-gray-800 rounded-lg shadow-lg p-4 mb-6 text-center">
+            <p class="text-gray-400 mb-2">Your User ID: <span id="userIdDisplay" class="font-mono text-gray-200">Loading...</span></p>
+            <div class="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 mt-4">
+                <input id="usernameInput" type="text" placeholder="Enter your username" class="bg-gray-700 text-white placeholder-gray-400 rounded-lg p-2 w-full sm:w-1/2 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-200" maxlength="20">
+                <button id="saveUsernameButton" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto">
+                    Save Username
+                </button>
+            </div>
+            <p id="usernameDisplay" class="text-lg font-bold text-green-400 mt-4 hidden"></p>
+        </div>
+
+        <!-- Pick Summary and Counter -->
+        <div class="bg-gray-800 rounded-lg shadow-lg p-4 flex justify-between items-center mb-6">
+            <h2 class="text-lg font-medium">Selected Games: <span id="picksCount" class="text-green-400">0</span> / 5</h2>
+            <div class="flex space-x-4">
+                <button id="clearButton" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    Clear Selections
+                </button>
+                <button id="submitButton" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    Submit Picks
+                </button>
+            </div>
+        </div>
+
+        <!-- Game List Container -->
+        <div id="gameList" class="game-list-container space-y-4 max-h-[60vh] overflow-y-auto">
+            <!-- Game cards will be dynamically inserted here -->
+        </div>
+        
+        <!-- Info and Status Messages -->
+        <div id="messageArea" class="mt-6">
+            <p id="statusMessage" class="text-center text-gray-400"></p>
+        </div>
+
+        <!-- Message Modal -->
+        <div id="messageModal" class="message-modal fixed inset-0 z-50 flex items-center justify-center hidden">
+            <div class="message-box p-6 rounded-lg shadow-xl text-center max-w-sm">
+                <p id="modalMessage" class="text-lg font-medium mb-4"></p>
+                <button id="modalCloseButton" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // --- Firebase Initialization & Authentication ---
+        let app, db, auth;
+        let userId = null;
+        let isAuthReady = false;
+
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            console.log("Firebase initialized.");
+            
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    document.getElementById('userIdDisplay').textContent = userId;
+                    isAuthReady = true;
+                    console.log("User authenticated:", userId);
+                    await loadPicks();
+                } else {
+                    console.error("No user is signed in.");
+                    // Sign in anonymously if no token is available
+                    if (!initialAuthToken) {
+                        try {
+                            await signInAnonymously(auth);
+                            console.log("Signed in anonymously.");
+                        } catch (error) {
+                            console.error("Anonymous sign-in failed:", error);
+                            showModal('Failed to sign in. Please try again.');
+                        }
+                    }
+                }
+            });
+
+            if (initialAuthToken) {
+                signInWithCustomToken(auth, initialAuthToken).catch((error) => {
+                    console.error("Custom token sign-in failed:", error);
+                    showModal('Authentication failed. Please try again.');
+                });
+            } else {
+                signInAnonymously(auth);
+            }
+
+        } catch (error) {
+            console.error("Failed to initialize Firebase:", error);
+            showModal('Failed to initialize the application. Please check the configuration.');
+        }
+
+        // --- UI Elements ---
+        const gameListEl = document.getElementById('gameList');
+        const submitButton = document.getElementById('submitButton');
+        const clearButton = document.getElementById('clearButton');
+        const picksCountEl = document.getElementById('picksCount');
+        const statusMessageEl = document.getElementById('statusMessage');
+        const messageModal = document.getElementById('messageModal');
+        const modalMessageEl = document.getElementById('modalMessage');
+        const modalCloseButton = document.getElementById('modalCloseButton');
+        const usernameInput = document.getElementById('usernameInput');
+        const saveUsernameButton = document.getElementById('saveUsernameButton');
+        const usernameDisplay = document.getElementById('usernameDisplay');
+
+        modalCloseButton.onclick = () => {
+            messageModal.classList.add('hidden');
+        };
+
+        function showModal(message) {
+            modalMessageEl.textContent = message;
+            messageModal.classList.remove('hidden');
+        }
+
+        // --- Application State and Logic ---
+        let selectedPicks = new Set();
+        let hasSubmitted = false;
+        let hasUsername = false;
+        let games = []; // Will hold the games loaded from the data source
+        const currentWeekId = 'week-1'; // Static ID for this example
+        const deadlineDate = new Date('2025-09-06T18:00:00-05:00'); // 6 PM CST on Saturday, Sep 6, 2025
+
+        function updatePicksCount() {
+            picksCountEl.textContent = selectedPicks.size;
+            submitButton.disabled = selectedPicks.size !== 5 || hasSubmitted || new Date() > deadlineDate;
+            clearButton.disabled = selectedPicks.size === 0 || hasSubmitted;
+        }
+
+        // This function now fetches the game data from a CSV URL.
+        async function loadGames() {
+            statusMessageEl.textContent = 'Loading game data...';
+            try {
+                const apiUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQQc5QUTIbDi4R3CCHUBH4BCGE3sE4t3M1qhd7COBG189XbAdQIV9gVjpXijve1sjXcewgm018dZgOC/pub?gid=0&single=true&output=csv';
+                const response = await fetch(apiUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const csvText = await response.text();
+                
+                // Parse CSV data
+                const rows = csvText.trim().split('\n');
+                const headers = rows[0].split(',').map(header => header.trim().toLowerCase());
+                const gameData = rows.slice(1).map(row => {
+                    const values = row.split(',').map(value => value.trim());
+                    const game = {};
+                    headers.forEach((header, index) => {
+                        game[header] = values[index];
+                    });
+                    return game;
+                });
+
+                games = gameData;
+                renderGames();
+                statusMessageEl.textContent = 'Game data loaded.';
+                
+            } catch (error) {
+                console.error("Error fetching game data:", error);
+                // Fallback to mock data if fetch fails
+                games = [
+                    { id: '1', date: 'Thu, Sep 4', time: '07:20 PM CST', home: 'Philadelphia Eagles', away: 'Dallas Cowboys', line: 'Cowboys -3.5' },
+                    { id: '2', date: 'Fri, Sep 5', time: '07:00 PM CST', home: 'Los Angeles Chargers', away: 'Kansas City Chiefs', line: 'Chiefs -6.0' },
+                    { id: '3', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'Atlanta Falcons', away: 'Tampa Bay Buccaneers', line: 'Falcons -2.5' },
+                    { id: '4', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'Cleveland Browns', away: 'Cincinnati Bengals', line: 'Bengals -1.0' },
+                    { id: '5', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'Indianapolis Colts', away: 'Miami Dolphins', line: 'Dolphins -4.5' },
+                    { id: '6', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'New England Patriots', away: 'Las Vegas Raiders', line: 'Raiders -1.5' },
+                    { id: '7', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'New Orleans Saints', away: 'Arizona Cardinals', line: 'Saints -7.0' },
+                    { id: '8', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'New York Jets', away: 'Pittsburgh Steelers', line: 'Jets -3.0' },
+                    { id: '9', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'Washington Commanders', away: 'New York Giants', line: 'Giants -5.5' },
+                    { id: '10', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'Jacksonville Jaguars', away: 'Carolina Panthers', line: 'Jaguars -8.0' },
+                    { id: '11', date: 'Sun, Sep 7', time: '03:05 PM CST', home: 'Denver Broncos', away: 'Tennessee Titans', line: 'Broncos -2.0' },
+                    { id: '12', date: 'Sun, Sep 7', time: '03:05 PM CST', home: 'Seattle Seahawks', away: 'San Francisco 49ers', line: '49ers -6.5' },
+                    { id: '13', date: 'Sun, Sep 7', time: '03:25 PM CST', home: 'Green Bay Packers', away: 'Detroit Lions', line: 'Lions -4.0' },
+                    { id: '14', date: 'Sun, Sep 7', time: '03:25 PM CST', home: 'Los Angeles Rams', away: 'Houston Texans', line: 'Rams -3.5' },
+                    { id: '15', date: 'Sun, Sep 7', time: '07:20 PM CST', home: 'Buffalo Bills', away: 'Baltimore Ravens', line: 'Ravens -1.5' },
+                    { id: '16', date: 'Mon, Sep 8', time: '07:15 PM CST', home: 'Chicago Bears', away: 'Minnesota Vikings', line: 'Bears -3.0' }
+                ];
+                renderGames();
+                statusMessageEl.textContent = 'Error loading game data. Using a fallback list.';
+            }
+        }
+
+        function renderGames() {
+            const now = new Date();
+            gameListEl.innerHTML = '';
+            
+            // Sort games by date and time
+            const sortedGames = games.sort((a, b) => {
+                const dateA = new Date(`2025 ${a.date.split(', ')[1]} ${a.time.replace(' CST', '')}`);
+                const dateB = new Date(`2025 ${b.date.split(', ')[1]} ${b.time.replace(' CST', '')}`);
+                return dateA - dateB;
+            });
+
+            sortedGames.forEach(game => {
+                const gameDate = new Date(`2025 ${game.date.split(', ')[1]} ${game.time.replace(' CST', '')}`);
+                const hasGameStarted = now > gameDate;
+
+                const gameCard = document.createElement('div');
+                gameCard.className = `pick-card p-4 rounded-lg shadow-md flex flex-col sm:flex-row justify-between items-center transition-all duration-300 ${hasGameStarted ? 'opacity-50' : ''}`;
+                gameCard.innerHTML = `
+                    <div class="flex-grow text-center sm:text-left mb-4 sm:mb-0">
+                        <p class="text-sm font-light text-gray-400">${game.date} @ ${game.time}</p>
+                        <h3 class="text-xl font-bold mb-1">${game.away} <span class="text-gray-500">vs</span> ${game.home}</h3>
+                        <p class="text-xs text-gray-500">Line: ${game.line}</p>
+                    </div>
+                    <div class="flex space-x-4">
+                        <label class="flex items-center space-x-2 cursor-pointer ${hasGameStarted || hasSubmitted ? 'opacity-50 cursor-not-allowed' : ''}">
+                            <input type="radio" name="game-${game.id}" value="${game.away}" data-game-id="${game.id}" data-team="${game.away}" class="form-radio text-green-500 w-4 h-4" ${hasGameStarted || hasSubmitted ? 'disabled' : ''}>
+                            <span class="text-white">${game.away}</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer ${hasGameStarted || hasSubmitted ? 'opacity-50 cursor-not-allowed' : ''}">
+                            <input type="radio" name="game-${game.id}" value="${game.home}" data-game-id="${game.id}" data-team="${game.home}" class="form-radio text-green-500 w-4 h-4" ${hasGameStarted || hasSubmitted ? 'disabled' : ''}>
+                            <span class="text-white">${game.home}</span>
+                        </label>
+                    </div>
+                `;
+                gameListEl.appendChild(gameCard);
+
+                // Add event listeners for radio buttons
+                const radioButtons = gameCard.querySelectorAll('input[type="radio"]');
+                radioButtons.forEach(radio => {
+                    radio.addEventListener('change', (e) => {
+                        const gameId = e.target.dataset.gameId;
+                        const team = e.target.dataset.team;
+                        
+                        // Find the previous pick for this game and remove it from the set
+                        for (let pick of selectedPicks) {
+                            if (pick.gameId === gameId) {
+                                selectedPicks.delete(pick);
+                                break;
+                            }
+                        }
+                        
+                        // Add the new pick
+                        selectedPicks.add({ gameId, team });
+                        updatePicksCount();
+                    });
+                });
+            });
+            updatePicksCount();
+        }
+
+        async function loadPicks() {
+            if (!isAuthReady) {
+                console.log("Authentication not ready, retrying loadPicks...");
+                setTimeout(loadPicks, 500);
+                return;
+            }
+            
+            statusMessageEl.textContent = 'Loading your picks...';
+            try {
+                const picksDocRef = doc(db, `artifacts/${appId}/users/${userId}/picks`, currentWeekId);
+                const picksDoc = await getDoc(picksDocRef);
+
+                if (picksDoc.exists()) {
+                    hasSubmitted = true;
+                    const picksData = picksDoc.data();
+                    const picksArray = picksData.picks || [];
+                    const username = picksData.username || '';
+                    
+                    // Populate the UI with submitted picks
+                    picksArray.forEach(pick => {
+                        const radio = document.querySelector(`input[data-game-id="${pick.gameId}"][data-team="${pick.team}"]`);
+                        if (radio) {
+                            radio.checked = true;
+                            radio.disabled = true;
+                        }
+                    });
+                    
+                    selectedPicks = new Set(picksArray);
+                    
+                    if (username) {
+                        usernameInput.value = username;
+                        usernameInput.disabled = true;
+                        saveUsernameButton.disabled = true;
+                        usernameDisplay.textContent = `Username: ${username}`;
+                        usernameDisplay.classList.remove('hidden');
+                    }
+
+                    statusMessageEl.textContent = `Your picks for Week 1 have been submitted.`;
+                    showModal('Your picks have already been submitted and cannot be changed.');
+                    
+                } else {
+                    statusMessageEl.textContent = 'Please select 5 games to submit your picks.';
+                }
+            } catch (error) {
+                console.error("Error loading picks:", error);
+                statusMessageEl.textContent = 'Error loading your picks. Please try again.';
+            }
+
+            // Disable all radio buttons if picks have been submitted or deadline passed
+            if (hasSubmitted || new Date() > deadlineDate) {
+                document.querySelectorAll('input[type="radio"]').forEach(radio => radio.disabled = true);
+                submitButton.disabled = true;
+            }
+            
+            updatePicksCount();
+        }
+
+        submitButton.addEventListener('click', async () => {
+            const now = new Date();
+            if (now > deadlineDate) {
+                showModal('The deadline to submit picks has passed.');
+                submitButton.disabled = true;
+                return;
+            }
+
+            if (selectedPicks.size !== 5) {
+                showModal('Please select exactly 5 games before submitting.');
+                return;
+            }
+
+            if (!isAuthReady) {
+                showModal('Authentication not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            const username = usernameInput.value.trim();
+            if (username === '') {
+                showModal('Please enter a username before submitting.');
+                return;
+            }
+
+            // Convert set to array for saving to Firestore
+            const picksArray = Array.from(selectedPicks);
+
+            try {
+                const picksDocRef = doc(db, `artifacts/${appId}/users/${userId}/picks`, currentWeekId);
+                await setDoc(picksDocRef, { picks: picksArray, username: username });
+                hasSubmitted = true;
+                submitButton.disabled = true;
+                usernameInput.disabled = true;
+                saveUsernameButton.disabled = true;
+                document.querySelectorAll('input[type="radio"]').forEach(radio => radio.disabled = true);
+                showModal('Picks submitted successfully!');
+                statusMessageEl.textContent = 'Your picks for Week 1 have been submitted.';
+                usernameDisplay.textContent = `Username: ${username}`;
+                usernameDisplay.classList.remove('hidden');
+
+            } catch (error) {
+                console.error("Error submitting picks:", error);
+                showModal('Failed to submit picks. Please try again.');
+            }
+        });
+        
+        clearButton.addEventListener('click', () => {
+            selectedPicks.clear();
+            document.querySelectorAll('input[type="radio"]').forEach(radio => {
+                if (!hasSubmitted) {
+                    radio.checked = false;
+                }
+            });
+            updatePicksCount();
+        });
+
+        saveUsernameButton.addEventListener('click', async () => {
+            const username = usernameInput.value.trim();
+            if (username === '') {
+                showModal('Please enter a username.');
+                return;
+            }
+
+            if (!isAuthReady) {
+                showModal('Authentication not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            try {
+                const picksDocRef = doc(db, `artifacts/${appId}/users/${userId}/picks`, currentWeekId);
+                await updateDoc(picksDocRef, { username: username });
+                usernameInput.disabled = true;
+                saveUsernameButton.disabled = true;
+                usernameDisplay.textContent = `Username: ${username}`;
+                usernameDisplay.classList.remove('hidden');
+                showModal('Username saved successfully!');
+            } catch (error) {
+                console.error("Error saving username:", error);
+                showModal('Failed to save username. Please try again.');
+            }
+        });
+
+        // Initial render
+        document.addEventListener('DOMContentLoaded', () => {
+            loadGames();
+        });
+    </script>
+</body>
+</html>
