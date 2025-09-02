@@ -1,355 +1,420 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NFL Pick 'em App</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #121212;
-            color: #E0E0E0;
-        }
-        .container {
-            max-width: 800px;
-        }
-        .pick-card {
-            background-color: #1E1E1E;
-        }
-        .message-modal {
-            background-color: rgba(0, 0, 0, 0.7);
-        }
-        .message-box {
-            background-color: #2D2D2D;
-        }
-        .game-list-container::-webkit-scrollbar {
-            width: 8px;
-        }
-        .game-list-container::-webkit-scrollbar-track {
-            background: #121212;
-            border-radius: 10px;
-        }
-        .game-list-container::-webkit-scrollbar-thumb {
-            background: #4A5568;
-            border-radius: 10px;
-        }
-        .game-list-container::-webkit-scrollbar-thumb:hover {
-            background: #718096;
-        }
-    </style>
-</head>
-<body class="p-4 md:p-8 flex flex-col items-center min-h-screen">
-    <div class="container mx-auto">
-        <h1 class="text-3xl md:text-4xl font-bold text-center mb-6 text-green-500">NFL Pick 'em</h1>
-        
-        <!-- User Status Section -->
-        <div class="bg-gray-800 rounded-lg shadow-lg p-4 mb-6 text-center">
-            <div class="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 mt-4">
-                <input id="usernameInput" type="text" placeholder="Enter your username" class="bg-gray-700 text-white placeholder-gray-400 rounded-lg p-2 w-full sm:w-1/2 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-200" maxlength="20">
-            </div>
-            <p id="usernameDisplay" class="text-lg font-bold text-green-400 mt-4 hidden"></p>
-        </div>
+import React, { useState, useEffect } from 'react';
 
-        <!-- Pick Summary and Counter -->
-        <div class="bg-gray-800 rounded-lg shadow-lg p-4 flex justify-between items-center mb-6">
-            <h2 class="text-lg font-medium">Selected Games: <span id="picksCount" class="text-green-400">0</span> / 5</h2>
-            <div class="flex space-x-4">
-                <button id="clearButton" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                    Clear Selections
-                </button>
-                <button id="submitButton" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                    Submit Picks
-                </button>
-            </div>
-        </div>
-        
-        <!-- Current Time Display -->
-        <div class="text-center text-sm text-gray-400 mb-4">
-            Current app time: <span id="currentTime"></span>
-        </div>
+const PickemApp = () => {
+  // We're no longer using Firebase, so we'll generate a unique ID for each user.
+  const [userId] = useState(() => {
+    let id = localStorage.getItem('nfl_pickem_user_id');
+    if (!id) {
+      id = 'user_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('nfl_pickem_user_id', id);
+    }
+    return id;
+  });
 
-        <!-- Game List Container -->
-        <div id="gameList" class="game-list-container space-y-4 max-h-[60vh] overflow-y-auto">
-            <!-- Game cards will be dynamically inserted here -->
-        </div>
-        
-        <!-- Info and Status Messages -->
-        <div id="messageArea" class="mt-6">
-            <p id="statusMessage" class="text-center text-gray-400"></p>
-        </div>
+  const [games, setGames] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedPicks, setSelectedPicks] = useState([]);
+  const [picksSubmitted, setPicksSubmitted] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalContent, setModalContent] = useState('');
+  const [username, setUsername] = useState('');
+  const [appsScriptUrl, setAppsScriptUrl] = useState('');
+  const [currentWeek, setCurrentWeek] = useState(0);
 
-        <!-- Message Modal -->
-        <div id="messageModal" class="message-modal fixed inset-0 z-50 flex items-center justify-center hidden">
-            <div class="message-box p-6 rounded-lg shadow-xl text-center max-w-sm">
-                <p id="modalMessage" class="text-lg font-medium mb-4"></p>
-                <button id="modalCloseButton" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
-                    OK
-                </button>
-            </div>
-        </div>
-    </div>
+  const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTDvan0KHZpX7RT7ZTPOBZDvBweF8V82caTcqTIPDuEnhJNmLFVL8QON6IZJCaBepJY1EjL1zBYYsuf/pub?gid=0&single=true&output=csv';
 
-    <script>
-        // --- IMPORTANT: Paste your Google Apps Script Web App URL here ---
-        const WEB_APP_URL = 'PASTE_YOUR_GOOGLE_APPS_SCRIPT_URL_HERE';
-        
-        // --- UI Elements ---
-        const gameListEl = document.getElementById('gameList');
-        const submitButton = document.getElementById('submitButton');
-        const clearButton = document.getElementById('clearButton');
-        const picksCountEl = document.getElementById('picksCount');
-        const statusMessageEl = document.getElementById('statusMessage');
-        const messageModal = document.getElementById('messageModal');
-        const modalMessageEl = document.getElementById('modalMessage');
-        const modalCloseButton = document.getElementById('modalCloseButton');
-        const usernameInput = document.getElementById('usernameInput');
-        const currentTimeEl = document.getElementById('currentTime');
+  // Function to get the current week number and calculate the next deadline.
+  const getWeeklyInfo = () => {
+    const today = new Date();
+    // Week 1 starts on Sep 5, 2024 (Thursday) - using 2025 as the example year.
+    const weekOneStart = new Date('2025-09-02T08:00:00-06:00'); // Tuesday 8am CST
+    const msInWeek = 7 * 24 * 60 * 60 * 1000;
+    const weekNumber = Math.floor((today.getTime() - weekOneStart.getTime()) / msInWeek) + 1;
+    
+    const deadlineDate = new Date(weekOneStart.getTime() + (msInWeek * (weekNumber -1)));
+    const daysUntilSaturday = 6 - deadlineDate.getDay(); // 6 is Saturday
+    deadlineDate.setDate(deadlineDate.getDate() + daysUntilSaturday);
+    deadlineDate.setHours(18, 0, 0, 0); // 6:00 PM CST
+    
+    return { weekNumber, deadline: deadlineDate };
+  };
 
-        modalCloseButton.onclick = () => {
-            messageModal.classList.add('hidden');
+  const { weekNumber, deadline } = getWeeklyInfo();
+  
+  // Function to fetch and parse game data from the Google Sheet
+  const fetchGames = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch(GOOGLE_SHEET_URL);
+      if (!response.ok) {
+        throw new Error('Failed to fetch game data.');
+      }
+      const csvText = await response.text();
+      const rows = csvText.trim().split('\n');
+      const headers = rows[0].split(',').map(header => header.trim());
+      const gameData = rows.slice(1).map(row => {
+        const values = row.split(',').map(cell => cell.trim());
+        const game = {};
+        headers.forEach((header, index) => {
+          game[header] = values[index];
+        });
+        return game;
+      });
+      setGames(gameData);
+      setCurrentWeek(weekNumber);
+    } catch (e) {
+      console.error("Error fetching game data:", e);
+      setSubmitMessage("Failed to load game data. Please try again later.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Check if a game is in the past
+  const isGamePast = (game) => {
+    // Parse date parts
+    const [monthStr, dayStr, yearStr] = game.date.split('/');
+    const month = parseInt(monthStr, 10);
+    const day = parseInt(dayStr, 10);
+    const year = parseInt(yearStr, 10);
+    const fullYear = year < 100 ? 2000 + year : year;
+
+    // Parse time parts
+    const timeMatch = game.time.match(/(\d+):(\d+) (\w+)/);
+    if (!timeMatch) return false; // Invalid time format
+    let hours = Number(timeMatch[1]);
+    const minutes = Number(timeMatch[2]);
+    const period = timeMatch[3];
+
+    // Convert to 24-hour format
+    if (period.toUpperCase() === 'PM' && hours !== 12) {
+      hours += 12;
+    } else if (period.toUpperCase() === 'AM' && hours === 12) {
+      hours = 0;
+    }
+
+    // Create the game date object using the local timezone
+    const gameDate = new Date(fullYear, month - 1, day, hours, minutes, 0);
+    const now = new Date();
+    
+    const isPast = gameDate.getTime() < now.getTime();
+    return isPast;
+  };
+
+  // Check if the overall picking deadline has passed
+  const isDeadlinePassed = () => {
+    return new Date().getTime() > deadline.getTime();
+  };
+
+  // Fetch games and load local storage on component mount
+  useEffect(() => {
+    fetchGames();
+    const storedPicks = localStorage.getItem(`picks_week_${currentWeek}_${userId}`);
+    if (storedPicks) {
+      try {
+        const parsedPicks = JSON.parse(storedPicks);
+        setSelectedPicks(parsedPicks);
+        setPicksSubmitted(true);
+      } catch (e) {
+        console.error("Failed to parse stored picks:", e);
+        localStorage.removeItem(`picks_week_${currentWeek}_${userId}`);
+      }
+    }
+    const storedUsername = localStorage.getItem('nfl_pickem_username');
+    if (storedUsername) {
+      setUsername(storedUsername);
+    }
+  }, [userId, currentWeek]);
+
+  const handlePickSelect = (gameId, teamType) => {
+    if (picksSubmitted || isDeadlinePassed()) return;
+
+    setSelectedPicks(prevPicks => {
+      const existingPickIndex = prevPicks.findIndex(p => p.gameId === gameId);
+
+      // If a pick for this game already exists
+      if (existingPickIndex > -1) {
+        // If the user clicks the same team again, deselect it
+        if (prevPicks[existingPickIndex].winner === teamType) {
+          return prevPicks.filter(p => p.gameId !== gameId);
+        } else {
+          // If the user clicks the other team, update the pick
+          const newPicks = [...prevPicks];
+          newPicks[existingPickIndex].winner = teamType;
+          return newPicks;
+        }
+      } else {
+        // If it's a new pick and the user has less than 5 picks
+        if (prevPicks.length < 5) {
+          return [...prevPicks, { gameId, winner: teamType }];
+        }
+      }
+      return prevPicks;
+    });
+  };
+
+  const handleSubmitPicks = async () => {
+    if (!appsScriptUrl) {
+      setModalContent("Please enter the Google Apps Script URL first.");
+      setModalOpen(true);
+      return;
+    }
+    
+    if (!username.trim()) {
+      setModalContent("Please enter a username.");
+      setModalOpen(true);
+      return;
+    }
+
+    if (selectedPicks.length !== 5) {
+      setModalContent("Please select exactly 5 games.");
+      setModalOpen(true);
+      return;
+    }
+
+    if (picksSubmitted) {
+      setModalContent("Your picks have already been submitted and cannot be changed.");
+      setModalOpen(true);
+      return;
+    }
+
+    if (isDeadlinePassed()) {
+      setModalContent("The deadline for submitting picks has passed.");
+      setModalOpen(true);
+      return;
+    }
+
+    try {
+      const picksToSave = selectedPicks.map(pick => {
+        const game = games.find(g => g.id === pick.gameId);
+        const selectedWinner = pick.winner === 'home' ? game.homeTeam : game.awayTeam;
+        return {
+          gameId: pick.gameId,
+          homeTeam: game.homeTeam,
+          awayTeam: game.awayTeam,
+          selectedWinner: selectedWinner,
         };
+      });
 
-        function showModal(message) {
-            modalMessageEl.textContent = message;
-            messageModal.classList.remove('hidden');
+      // Prepare data for the Apps Script
+      const data = {
+        userId,
+        username,
+        timestamp: new Date().toISOString(),
+        picks: picksToSave,
+        week: currentWeek
+      };
+
+      // Send a POST request to the Apps Script URL
+      const response = await fetch(appsScriptUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.status === 'success') {
+          // Save to local storage to prevent resubmission this week
+          localStorage.setItem(`picks_week_${currentWeek}_${userId}`, JSON.stringify(selectedPicks));
+          localStorage.setItem('nfl_pickem_username', username);
+          setModalContent("Picks submitted successfully to Google Sheet!");
+          setModalOpen(true);
+          setPicksSubmitted(true);
+          setSubmitMessage("Picks submitted successfully!");
+        } else {
+          setModalContent(`Error submitting picks: ${result.error}`);
+          setModalOpen(true);
         }
+      } else {
+        setModalContent("An error occurred while communicating with the Google Apps Script.");
+        setModalOpen(true);
+      }
+    } catch (e) {
+      console.error("Error submitting picks: ", e);
+      setModalContent("An error occurred while submitting your picks. Please check the Apps Script URL.");
+      setModalOpen(true);
+    }
+  };
 
-        // --- Application State and Logic ---
-        // Changed to a Map to reliably store picks by game ID.
-        let selectedPicks = new Map();
-        let hasSubmitted = false;
-        let games = []; // Will hold the games loaded from the data source
-        const deadlineDate = new Date('2025-09-06T18:00:00-05:00'); // 6 PM CST on Saturday, Sep 6, 2025
+  const closeModal = () => {
+    setModalOpen(false);
+    setModalContent('');
+  };
 
-        function updatePicksCount() {
-            picksCountEl.textContent = selectedPicks.size;
-            submitButton.disabled = selectedPicks.size !== 5 || hasSubmitted || new Date() > deadlineDate;
-            clearButton.disabled = selectedPicks.size === 0 || hasSubmitted;
-        }
-        
-        function updateCurrentTimeDisplay() {
-            const now = new Date();
-            currentTimeEl.textContent = now.toLocaleString();
-        }
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white text-center rounded-lg shadow-xl">
+        <svg className="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span className="ml-3 text-lg font-medium">Initializing...</span>
+      </div>
+    );
+  }
 
-        async function loadGames() {
-            statusMessageEl.textContent = 'Loading game data...';
-            try {
-                const apiUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQQc5QUTIbDi4R3CCHUBH4BCGE3sE4t3M1qhd7COBG189XbAdQIV9gVjpXijve1sjXcewgm018dZgOC/pub?gid=0&single=true&output=csv';
-                const response = await fetch(apiUrl);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const csvText = await response.text();
-                
-                // Parse CSV data
-                const rows = csvText.trim().split('\n');
-                const headers = rows[0].split(',').map(header => header.trim().toLowerCase());
-                const gameData = rows.slice(1).map(row => {
-                    const values = row.split(',').map(value => value.trim());
-                    const game = {};
-                    headers.forEach((header, index) => {
-                        game[header] = values[index];
-                    });
-                    return game;
-                });
+  return (
+    <div className="bg-gray-900 min-h-screen text-white font-inter p-4 sm:p-8">
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-gray-800 p-6 rounded-3xl shadow-2xl border-2 border-gray-700">
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-center text-teal-400 mb-2">NFL Pick'em</h1>
+          <p className="text-center text-sm sm:text-base text-gray-400 mb-6">Select exactly 5 games for Week {currentWeek}.</p>
 
-                games = gameData;
-                
-                // NEW: Pre-process the dates to ensure they are valid Date objects for comparison
-                games.forEach(game => {
-                    game.datetime = new Date(game.datetime);
-                });
+          <div className="flex flex-col sm:flex-row justify-between items-center mb-6 text-sm sm:text-base">
+            <div className="bg-gray-700 rounded-full px-4 py-2 mb-2 sm:mb-0">
+              <span className="font-semibold">User ID:</span> <span className="text-gray-300 break-all">{userId}</span>
+            </div>
+            <div className={`font-semibold px-4 py-2 rounded-full text-center ${isDeadlinePassed() ? 'bg-red-500 text-white' : 'bg-teal-500 text-gray-900'}`}>
+              Deadline: Saturday {deadline.toLocaleDateString()} {deadline.toLocaleTimeString()}
+            </div>
+          </div>
 
-                renderGames();
-                statusMessageEl.textContent = 'Game data loaded.';
-                
-            } catch (error) {
-                console.error("Error fetching game data:", error);
-                // Fallback to mock data if fetch fails
-                games = [
-                    // Added a game with a past date to demonstrate the fix.
-                    { id: '0', date: 'Mon, Sep 1', time: '07:15 PM CST', datetime: '2025-09-01T19:15:00-05:00', home: 'New York Giants', away: 'New Orleans Saints', line: 'Saints -3.0' },
-                    { id: '1', date: 'Thu, Sep 4', time: '07:20 PM CST', datetime: '2025-09-04T19:20:00-05:00', home: 'Philadelphia Eagles', away: 'Dallas Cowboys', line: 'Cowboys -3.5' },
-                    { id: '2', date: 'Fri, Sep 5', time: '07:00 PM CST', datetime: '2025-09-05T19:00:00-05:00', home: 'Los Angeles Chargers', away: 'Kansas City Chiefs', line: 'Chiefs -6.0' },
-                    { id: '3', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'Atlanta Falcons', away: 'Tampa Bay Buccaneers', line: 'Falcons -2.5' },
-                    { id: '4', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'Cleveland Browns', away: 'Cincinnati Bengals', line: 'Bengals -1.0' },
-                    { id: '5', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'Indianapolis Colts', away: 'Miami Dolphins', line: 'Dolphins -4.5' },
-                    { id: '6', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'New England Patriots', away: 'Las Vegas Raiders', line: 'Raiders -1.5' },
-                    { id: '7', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'New Orleans Saints', away: 'Arizona Cardinals', line: 'Saints -7.0' },
-                    { id: '8', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'New York Jets', away: 'Pittsburgh Steelers', line: 'Jets -3.0' },
-                    { id: '9', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'Washington Commanders', away: 'New York Giants', line: 'Giants -5.5' },
-                    { id: '10', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'Jacksonville Jaguars', away: 'Carolina Panthers', line: 'Jaguars -8.0' },
-                    { id: '11', date: 'Sun, Sep 7', time: '03:05 PM CST', datetime: '2025-09-07T15:05:00-05:00', home: 'Denver Broncos', away: 'Tennessee Titans', line: 'Broncos -2.0' },
-                    { id: '12', date: 'Sun, Sep 7', time: '03:05 PM CST', datetime: '2025-09-07T15:05:00-05:00', home: 'Seattle Seahawks', away: 'San Francisco 49ers', line: '49ers -6.5' },
-                    { id: '13', date: 'Sun, Sep 7', time: '03:25 PM CST', datetime: '2025-09-07T15:25:00-05:00', home: 'Green Bay Packers', away: 'Detroit Lions', line: 'Lions -4.0' },
-                    { id: '14', date: 'Sun, Sep 7', time: '03:25 PM CST', datetime: '2025-09-07T15:25:00-05:00', home: 'Los Angeles Rams', away: 'Houston Texans', line: 'Rams -3.5' },
-                    { id: '15', date: 'Sun, Sep 7', time: '07:20 PM CST', datetime: '2025-09-07T19:20:00-05:00', home: 'Buffalo Bills', away: 'Baltimore Ravens', line: 'Ravens -1.5' },
-                    { id: '16', date: 'Mon, Sep 8', time: '07:15 PM CST', datetime: '2025-09-08T19:15:00-05:00', home: 'Chicago Bears', away: 'Minnesota Vikings', line: 'Bears -3.0' }
-                ];
-                
-                // NEW: Manually convert datetime strings to Date objects
-                games.forEach(game => {
-                    game.datetime = new Date(game.datetime);
-                });
+          <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+            <div className="w-full">
+              <label htmlFor="username" className="block text-sm font-medium text-gray-400 mb-1">
+                Enter your username
+              </label>
+              <input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="e.g. TouchdownTommy"
+                className={`w-full px-4 py-2 rounded-lg bg-gray-700 text-white placeholder-gray-500 border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500 ${picksSubmitted ? 'cursor-not-allowed opacity-50' : ''}`}
+                disabled={picksSubmitted}
+              />
+            </div>
+            <div className="w-full flex justify-center sm:justify-end items-center">
+              <button
+                onClick={handleSubmitPicks}
+                className={`w-full sm:max-w-xs px-6 py-3 rounded-full text-lg font-bold transition-all duration-300 transform hover:scale-105 shadow-lg
+                  ${selectedPicks.length === 5 && username.trim() !== '' && !picksSubmitted && !isDeadlinePassed()
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-gray-500 text-gray-300 cursor-not-allowed'}
+                `}
+                disabled={selectedPicks.length !== 5 || !username.trim() || picksSubmitted || isDeadlinePassed()}
+              >
+                {picksSubmitted ? 'Picks Submitted' : 'Submit Picks'}
+              </button>
+            </div>
+          </div>
 
-                renderGames();
-                statusMessageEl.textContent = 'Error loading game data. Using a fallback list.';
-            }
-        }
+          <div className="w-full mb-6">
+            <label htmlFor="appScriptUrl" className="block text-sm font-medium text-gray-400 mb-1">
+              Google Apps Script URL
+            </label>
+            <input
+              id="appScriptUrl"
+              type="text"
+              value={appsScriptUrl}
+              onChange={(e) => setAppsScriptUrl(e.target.value)}
+              placeholder="https://script.google.com/macros/s/AKfycbxjsgm96f3dc5vEBZOOS_nhJ0iCQHZVzzw0rXaEglJaeB6Mv3O6dcD2BSWpyCkaI3Oh/exec"
+              className="w-full px-4 py-2 rounded-lg bg-gray-700 text-white placeholder-gray-500 border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            />
+          </div>
+          
+          <div className="mb-6 p-4 bg-gray-700 rounded-xl shadow-inner">
+            <h2 className="text-lg font-bold mb-2 text-teal-300">Your Current Picks ({selectedPicks.length}/5)</h2>
+            <ul className="space-y-2">
+              {selectedPicks.length > 0 ? (
+                selectedPicks.map(pick => {
+                  const game = games.find(g => g.id === pick.gameId);
+                  const winningTeam = pick.winner === 'home' ? game.homeTeam : game.awayTeam;
+                  return (
+                    <li key={pick.gameId} className="flex items-center space-x-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span className="text-gray-200">{winningTeam}</span>
+                    </li>
+                  );
+                })
+              ) : (
+                <li className="text-gray-400">No games selected yet.</li>
+              )}
+            </ul>
+          </div>
 
-        function renderGames() {
-            const now = new Date();
-            gameListEl.innerHTML = '';
-            
-            // Sort games by date and time
-            const sortedGames = games.sort((a, b) => {
-                return a.datetime - b.datetime;
-            });
-            
-            // Purge any picks that are for games that have already started.
-            const newPicks = new Map();
-            for (const [gameId, team] of selectedPicks.entries()) {
-                const game = games.find(g => g.id === gameId);
-                if (game) {
-                    if (now < game.datetime) {
-                        newPicks.set(gameId, team);
-                    }
-                }
-            }
-            selectedPicks = newPicks;
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {games.map(game => {
+              const isPast = isGamePast(game);
+              const isAwaySelected = selectedPicks.some(p => p.gameId === game.id && p.winner === 'away');
+              const isHomeSelected = selectedPicks.some(p => p.game.id === game.id && p.winner === 'home');
+              const isDisabled = isPast || picksSubmitted || isDeadlinePassed();
 
-            sortedGames.forEach(game => {
-                const hasGameStarted = now > game.datetime;
-
-                const gameCard = document.createElement('div');
-                gameCard.className = `pick-card p-4 rounded-lg shadow-md flex flex-col sm:flex-row justify-between items-center transition-all duration-300 ${hasGameStarted ? 'opacity-50' : ''}`;
-                gameCard.innerHTML = `
-                    <div class="flex-grow text-center sm:text-left mb-4 sm:mb-0">
-                        <p class="text-sm font-light text-gray-400">${game.date} @ ${game.time}</p>
-                        <h3 class="text-xl font-bold mb-1">${game.away} <span class="text-gray-500">vs</span> ${game.home}</h3>
-                        <p class="text-xs text-gray-500">Line: ${game.line}</p>
+              return (
+                <div
+                  key={game.id}
+                  className={`relative p-4 rounded-xl transition-all duration-300 shadow-md
+                    ${isPast ? 'bg-gray-700 opacity-50 cursor-not-allowed' : 'bg-gray-700 border-2 border-gray-600'}
+                  `}
+                >
+                  {isPast && (
+                    <div className="absolute top-2 right-2 px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-full">
+                      Game Started
                     </div>
-                    <div class="flex space-x-4">
-                        <label class="flex items-center space-x-2 cursor-pointer ${hasGameStarted || hasSubmitted ? 'opacity-50 cursor-not-allowed' : ''}">
-                            <input type="radio" name="game-${game.id}" value="${game.away}" data-game-id="${game.id}" data-team="${game.away}" class="form-radio text-green-500 w-4 h-4" ${hasGameStarted || hasSubmitted ? 'disabled' : ''} ${selectedPicks.get(game.id) === game.away ? 'checked' : ''}>
-                            <span class="text-white">${game.away}</span>
-                        </label>
-                        <label class="flex items-center space-x-2 cursor-pointer ${hasGameStarted || hasSubmitted ? 'opacity-50 cursor-not-allowed' : ''}">
-                            <input type="radio" name="game-${game.id}" value="${game.home}" data-game-id="${game.id}" data-team="${game.home}" class="form-radio text-green-500 w-4 h-4" ${hasGameStarted || hasSubmitted ? 'disabled' : ''} ${selectedPicks.get(game.id) === game.home ? 'checked' : ''}>
-                            <span class="text-white">${game.home}</span>
-                        </label>
-                    </div>
-                `;
-                gameListEl.appendChild(gameCard);
+                  )}
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-gray-400">{game.date} - {game.time}</span>
+                    <span className="text-sm font-semibold text-yellow-300">{game.bettingLine}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <button
+                      onClick={() => !isDisabled && handlePickSelect(game.id, 'away')}
+                      className={`flex-1 text-center py-2 px-4 rounded-lg font-bold transition-all duration-300
+                        ${isAwaySelected ? 'bg-green-600 text-white border-2 border-green-400' :
+                          isDisabled ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
+                          'bg-gray-600 text-gray-200 hover:bg-gray-500'}
+                      `}
+                      disabled={isDisabled}
+                    >
+                      {game.awayTeam}
+                    </button>
+                    <button
+                      onClick={() => !isDisabled && handlePickSelect(game.id, 'home')}
+                      className={`flex-1 text-center py-2 px-4 rounded-lg font-bold transition-all duration-300
+                        ${isHomeSelected ? 'bg-green-600 text-white border-2 border-green-400' :
+                          isDisabled ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
+                          'bg-gray-600 text-gray-200 hover:bg-gray-500'}
+                      `}
+                      disabled={isDisabled}
+                    >
+                      {game.homeTeam}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-                // Add event listeners for radio buttons
-                const radioButtons = gameCard.querySelectorAll('input[type="radio"]');
-                radioButtons.forEach(radio => {
-                    radio.addEventListener('change', (e) => {
-                        const gameId = e.target.dataset.gameId;
-                        const team = e.target.dataset.team;
-                        
-                        // Add the new pick to the Map, which automatically replaces any old pick for this game.
-                        selectedPicks.set(gameId, team);
-                        updatePicksCount();
-                    });
-                });
-            });
-            updatePicksCount();
-        }
+          <div className="flex flex-col items-center mt-8">
+            {submitMessage && (
+              <p className="mt-4 text-center text-sm font-semibold text-green-400">{submitMessage}</p>
+            )}
+          </div>
+        </div>
+      </div>
 
-        submitButton.addEventListener('click', async () => {
-            const now = new Date();
-            if (now > deadlineDate) {
-                showModal('The deadline to submit picks has passed.');
-                submitButton.disabled = true;
-                return;
-            }
+      {/* Custom Modal for alerts */}
+      {modalOpen && (
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 p-6 rounded-xl shadow-2xl border-2 border-gray-700 max-w-sm w-full text-center">
+            <p className="text-white text-lg mb-4">{modalContent}</p>
+            <button
+              onClick={closeModal}
+              className="bg-teal-500 hover:bg-teal-600 text-gray-900 font-bold py-2 px-6 rounded-full transition-all duration-300"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
-            if (selectedPicks.size !== 5) {
-                showModal('Please select exactly 5 games before submitting.');
-                return;
-            }
-            
-            // Check if any selected picks are for games that have already started
-            let hasInvalidPick = false;
-            for (const [gameId, team] of selectedPicks.entries()) {
-                const game = games.find(g => g.id === gameId);
-                if (now > game.datetime) {
-                    hasInvalidPick = true;
-                    break;
-                }
-            }
-
-            if (hasInvalidPick) {
-                showModal('One or more of your selected games has already started. Please deselect them and try again.');
-                return;
-            }
-
-
-            const username = usernameInput.value.trim();
-            if (username === '') {
-                showModal('Please enter a username before submitting.');
-                return;
-            }
-            
-            statusMessageEl.textContent = 'Submitting picks...';
-
-            const data = {
-                timestamp: new Date().toISOString(),
-                username: username,
-                picks: Array.from(selectedPicks.entries()).map(([gameId, team]) => ({ gameId, team }))
-            };
-
-            try {
-                const response = await fetch(WEB_APP_URL, {
-                    method: 'POST',
-                    mode: 'no-cors', // Required for Google Apps Script to work
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(data),
-                });
-                
-                // Note: The response is not readable due to 'no-cors' mode.
-                // We'll assume success if the request was sent without error.
-                
-                hasSubmitted = true;
-                submitButton.disabled = true;
-                usernameInput.disabled = true;
-                document.querySelectorAll('input[type="radio"]').forEach(radio => radio.disabled = true);
-                showModal('Picks submitted successfully!');
-                statusMessageEl.textContent = 'Your picks for Week 1 have been submitted.';
-                
-            } catch (error) {
-                console.error("Error submitting picks:", error);
-                showModal('Failed to submit picks. Please try again.');
-                statusMessageEl.textContent = 'Failed to submit picks.';
-            }
-        });
-        
-        clearButton.addEventListener('click', () => {
-            if (hasSubmitted) {
-                showModal('Cannot clear picks after submission.');
-                return;
-            }
-            selectedPicks.clear();
-            document.querySelectorAll('input[type="radio"]').forEach(radio => radio.checked = false);
-            updatePicksCount();
-        });
-        
-        // Initial render: start the app initialization process
-        document.addEventListener('DOMContentLoaded', () => {
-                updateCurrentTimeDisplay();
-                // Update the time every minute
-                setInterval(updateCurrentTimeDisplay, 60000); 
-                loadGames();
-        });
-    </script>
-</body>
-</html>
+export default PickemApp;
