@@ -123,16 +123,15 @@
         </div>
 
         <form id="picksForm" class="space-y-4">
-            <div>
-                <label for="username" class="block text-sm font-medium text-gray-300 mb-1">Your Username</label>
-                <input type="text" id="username" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition" required>
-            </div>
-
             <div id="gamesList" class="space-y-4">
                 <p class="text-center text-gray-400">Loading games...</p>
             </div>
 
-            <div class="flex justify-center">
+            <div class="flex items-end justify-end space-x-4 mt-8">
+                <div class="flex-grow max-w-xs">
+                    <label for="username" class="block text-sm font-medium text-gray-300 mb-1">Your Username</label>
+                    <input type="text" id="username" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition" required>
+                </div>
                 <button type="submit" id="submitButton" class="pick-button px-8 py-4 rounded-full bg-blue-600 text-white font-bold text-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <i class="fas fa-paper-plane mr-2"></i> Submit Picks
                 </button>
