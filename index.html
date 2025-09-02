@@ -43,7 +43,7 @@
     const [modalOpen, setModalOpen] = useState(false);
     const [modalContent, setModalContent] = useState('');
     const [username, setUsername] = useState('');
-    const [appsScriptUrl, setAppsScriptUrl] = useState('');
+    const [appsScriptUrl] = useState('https://script.google.com/macros/s/AKfycbxjsgm96f3dc5vEBZOOS_nhJ0iCQHZVzzw0rXaEglJaeB6Mv3O6dcD2BSWpyCkaI3Oh/exec');
     const [currentWeek, setCurrentWeek] = useState(0);
 
     const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTDvan0KHZpX7RT7ZTPOBZDvBweF8V82caTcqTIPDuEnhJNmLFVL8QON6IZJCaBepJY1EjL1zBYYsuf/pub?gid=0&single=true&output=csv';
@@ -179,12 +179,6 @@
     };
 
     const handleSubmitPicks = async () => {
-      if (!appsScriptUrl) {
-        setModalContent("Please enter the Google Apps Script URL first.");
-        setModalOpen(true);
-        return;
-      }
-      
       if (!username.trim()) {
         setModalContent("Please enter a username.");
         setModalOpen(true);
@@ -326,22 +320,8 @@
                 </button>
               </div>
             </div>
-
-            <div className="w-full mb-6">
-              <label htmlFor="appScriptUrl" className="block text-sm font-medium text-gray-400 mb-1">
-                Google Apps Script URL
-              </label>
-              <input
-                id="appScriptUrl"
-                type="text"
-                value={appsScriptUrl}
-                onChange={(e) => setAppsScriptUrl(e.target.value)}
-                placeholder="https://script.google.com/macros/s/AKfycbxjsgm96f3dc5vEBZOOS_nhJ0iCQHZVzzw0rXaEglJaeB6Mv3O6dcD2BSWpyCkaI3Oh/exec"
-                className="w-full px-4 py-2 rounded-lg bg-gray-700 text-white placeholder-gray-500 border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-            </div>
             
-            <div className="mb-6 p-4 bg-gray-700 rounded-xl shadow-inner">
+            <div className="w-full mb-6 p-4 bg-gray-700 rounded-xl shadow-inner">
               <h2 className="text-lg font-bold mb-2 text-teal-300">Your Current Picks ({selectedPicks.length}/5)</h2>
               <ul className="space-y-2">
                 {selectedPicks.length > 0 ? (
@@ -367,7 +347,7 @@
               {games.map(game => {
                 const isPast = isGamePast(game);
                 const isAwaySelected = selectedPicks.some(p => p.gameId === game.id && p.winner === 'away');
-                const isHomeSelected = selectedPicks.some(p => p.game.id === game.id && p.winner === 'home');
+                const isHomeSelected = selectedPicks.some(p => p.gameId === game.id && p.winner === 'home');
                 const isDisabled = isPast || picksSubmitted || isDeadlinePassed();
 
                 return (
