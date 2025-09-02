@@ -64,6 +64,11 @@
                 </button>
             </div>
         </div>
+        
+        <!-- Current Time Display -->
+        <div class="text-center text-sm text-gray-400 mb-4">
+            Current app time: <span id="currentTime"></span>
+        </div>
 
         <!-- Game List Container -->
         <div id="gameList" class="game-list-container space-y-4 max-h-[60vh] overflow-y-auto">
@@ -100,6 +105,7 @@
         const modalMessageEl = document.getElementById('modalMessage');
         const modalCloseButton = document.getElementById('modalCloseButton');
         const usernameInput = document.getElementById('usernameInput');
+        const currentTimeEl = document.getElementById('currentTime');
 
         modalCloseButton.onclick = () => {
             messageModal.classList.add('hidden');
@@ -121,6 +127,11 @@
             picksCountEl.textContent = selectedPicks.size;
             submitButton.disabled = selectedPicks.size !== 5 || hasSubmitted || new Date() > deadlineDate;
             clearButton.disabled = selectedPicks.size === 0 || hasSubmitted;
+        }
+        
+        function updateCurrentTimeDisplay() {
+            const now = new Date();
+            currentTimeEl.textContent = now.toLocaleString();
         }
 
         async function loadGames() {
@@ -148,6 +159,12 @@
                 });
 
                 games = gameData;
+                
+                // NEW: Pre-process the dates to ensure they are valid Date objects for comparison
+                games.forEach(game => {
+                    game.datetime = new Date(game.datetime);
+                });
+
                 renderGames();
                 statusMessageEl.textContent = 'Game data loaded.';
                 
@@ -156,24 +173,30 @@
                 // Fallback to mock data if fetch fails
                 games = [
                     // Added a game with a past date to demonstrate the fix.
-                    { id: '0', date: 'Mon, Sep 1', time: '07:15 PM CST', home: 'New York Giants', away: 'New Orleans Saints', line: 'Saints -3.0' },
-                    { id: '1', date: 'Thu, Sep 4', time: '07:20 PM CST', home: 'Philadelphia Eagles', away: 'Dallas Cowboys', line: 'Cowboys -3.5' },
-                    { id: '2', date: 'Fri, Sep 5', time: '07:00 PM CST', home: 'Los Angeles Chargers', away: 'Kansas City Chiefs', line: 'Chiefs -6.0' },
-                    { id: '3', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'Atlanta Falcons', away: 'Tampa Bay Buccaneers', line: 'Falcons -2.5' },
-                    { id: '4', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'Cleveland Browns', away: 'Cincinnati Bengals', line: 'Bengals -1.0' },
-                    { id: '5', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'Indianapolis Colts', away: 'Miami Dolphins', line: 'Dolphins -4.5' },
-                    { id: '6', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'New England Patriots', away: 'Las Vegas Raiders', line: 'Raiders -1.5' },
-                    { id: '7', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'New Orleans Saints', away: 'Arizona Cardinals', line: 'Saints -7.0' },
-                    { id: '8', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'New York Jets', away: 'Pittsburgh Steelers', line: 'Jets -3.0' },
-                    { id: '9', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'Washington Commanders', away: 'New York Giants', line: 'Giants -5.5' },
-                    { id: '10', date: 'Sun, Sep 7', time: '12:00 PM CST', home: 'Jacksonville Jaguars', away: 'Carolina Panthers', line: 'Jaguars -8.0' },
-                    { id: '11', date: 'Sun, Sep 7', time: '03:05 PM CST', home: 'Denver Broncos', away: 'Tennessee Titans', line: 'Broncos -2.0' },
-                    { id: '12', date: 'Sun, Sep 7', time: '03:05 PM CST', home: 'Seattle Seahawks', away: 'San Francisco 49ers', line: '49ers -6.5' },
-                    { id: '13', date: 'Sun, Sep 7', time: '03:25 PM CST', home: 'Green Bay Packers', away: 'Detroit Lions', line: 'Lions -4.0' },
-                    { id: '14', date: 'Sun, Sep 7', time: '03:25 PM CST', home: 'Los Angeles Rams', away: 'Houston Texans', line: 'Rams -3.5' },
-                    { id: '15', date: 'Sun, Sep 7', time: '07:20 PM CST', home: 'Buffalo Bills', away: 'Baltimore Ravens', line: 'Ravens -1.5' },
-                    { id: '16', date: 'Mon, Sep 8', time: '07:15 PM CST', home: 'Chicago Bears', away: 'Minnesota Vikings', line: 'Bears -3.0' }
+                    { id: '0', date: 'Mon, Sep 1', time: '07:15 PM CST', datetime: '2025-09-01T19:15:00-05:00', home: 'New York Giants', away: 'New Orleans Saints', line: 'Saints -3.0' },
+                    { id: '1', date: 'Thu, Sep 4', time: '07:20 PM CST', datetime: '2025-09-04T19:20:00-05:00', home: 'Philadelphia Eagles', away: 'Dallas Cowboys', line: 'Cowboys -3.5' },
+                    { id: '2', date: 'Fri, Sep 5', time: '07:00 PM CST', datetime: '2025-09-05T19:00:00-05:00', home: 'Los Angeles Chargers', away: 'Kansas City Chiefs', line: 'Chiefs -6.0' },
+                    { id: '3', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'Atlanta Falcons', away: 'Tampa Bay Buccaneers', line: 'Falcons -2.5' },
+                    { id: '4', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'Cleveland Browns', away: 'Cincinnati Bengals', line: 'Bengals -1.0' },
+                    { id: '5', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'Indianapolis Colts', away: 'Miami Dolphins', line: 'Dolphins -4.5' },
+                    { id: '6', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'New England Patriots', away: 'Las Vegas Raiders', line: 'Raiders -1.5' },
+                    { id: '7', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'New Orleans Saints', away: 'Arizona Cardinals', line: 'Saints -7.0' },
+                    { id: '8', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'New York Jets', away: 'Pittsburgh Steelers', line: 'Jets -3.0' },
+                    { id: '9', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'Washington Commanders', away: 'New York Giants', line: 'Giants -5.5' },
+                    { id: '10', date: 'Sun, Sep 7', time: '12:00 PM CST', datetime: '2025-09-07T12:00:00-05:00', home: 'Jacksonville Jaguars', away: 'Carolina Panthers', line: 'Jaguars -8.0' },
+                    { id: '11', date: 'Sun, Sep 7', time: '03:05 PM CST', datetime: '2025-09-07T15:05:00-05:00', home: 'Denver Broncos', away: 'Tennessee Titans', line: 'Broncos -2.0' },
+                    { id: '12', date: 'Sun, Sep 7', time: '03:05 PM CST', datetime: '2025-09-07T15:05:00-05:00', home: 'Seattle Seahawks', away: 'San Francisco 49ers', line: '49ers -6.5' },
+                    { id: '13', date: 'Sun, Sep 7', time: '03:25 PM CST', datetime: '2025-09-07T15:25:00-05:00', home: 'Green Bay Packers', away: 'Detroit Lions', line: 'Lions -4.0' },
+                    { id: '14', date: 'Sun, Sep 7', time: '03:25 PM CST', datetime: '2025-09-07T15:25:00-05:00', home: 'Los Angeles Rams', away: 'Houston Texans', line: 'Rams -3.5' },
+                    { id: '15', date: 'Sun, Sep 7', time: '07:20 PM CST', datetime: '2025-09-07T19:20:00-05:00', home: 'Buffalo Bills', away: 'Baltimore Ravens', line: 'Ravens -1.5' },
+                    { id: '16', date: 'Mon, Sep 8', time: '07:15 PM CST', datetime: '2025-09-08T19:15:00-05:00', home: 'Chicago Bears', away: 'Minnesota Vikings', line: 'Bears -3.0' }
                 ];
+                
+                // NEW: Manually convert datetime strings to Date objects
+                games.forEach(game => {
+                    game.datetime = new Date(game.datetime);
+                });
+
                 renderGames();
                 statusMessageEl.textContent = 'Error loading game data. Using a fallback list.';
             }
@@ -185,9 +208,7 @@
             
             // Sort games by date and time
             const sortedGames = games.sort((a, b) => {
-                const dateA = new Date(`2025 ${a.date.split(', ')[1]} ${a.time.replace(' CST', '')}`);
-                const dateB = new Date(`2025 ${b.date.split(', ')[1]} ${b.time.replace(' CST', '')}`);
-                return dateA - dateB;
+                return a.datetime - b.datetime;
             });
             
             // Purge any picks that are for games that have already started.
@@ -195,8 +216,7 @@
             for (const [gameId, team] of selectedPicks.entries()) {
                 const game = games.find(g => g.id === gameId);
                 if (game) {
-                    const gameDate = new Date(`2025 ${game.date.split(', ')[1]} ${game.time.replace(' CST', '')}`);
-                    if (now < gameDate) {
+                    if (now < game.datetime) {
                         newPicks.set(gameId, team);
                     }
                 }
@@ -204,8 +224,7 @@
             selectedPicks = newPicks;
 
             sortedGames.forEach(game => {
-                const gameDate = new Date(`2025 ${game.date.split(', ')[1]} ${game.time.replace(' CST', '')}`);
-                const hasGameStarted = now > gameDate;
+                const hasGameStarted = now > game.datetime;
 
                 const gameCard = document.createElement('div');
                 gameCard.className = `pick-card p-4 rounded-lg shadow-md flex flex-col sm:flex-row justify-between items-center transition-all duration-300 ${hasGameStarted ? 'opacity-50' : ''}`;
@@ -261,8 +280,7 @@
             let hasInvalidPick = false;
             for (const [gameId, team] of selectedPicks.entries()) {
                 const game = games.find(g => g.id === gameId);
-                const gameDate = new Date(`2025 ${game.date.split(', ')[1]} ${game.time.replace(' CST', '')}`);
-                if (now > gameDate) {
+                if (now > game.datetime) {
                     hasInvalidPick = true;
                     break;
                 }
@@ -327,7 +345,10 @@
         
         // Initial render: start the app initialization process
         document.addEventListener('DOMContentLoaded', () => {
-            loadGames();
+                updateCurrentTimeDisplay();
+                // Update the time every minute
+                setInterval(updateCurrentTimeDisplay, 60000); 
+                loadGames();
         });
     </script>
 </body>
