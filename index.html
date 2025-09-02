@@ -43,7 +43,8 @@
     const [modalOpen, setModalOpen] = useState(false);
     const [modalContent, setModalContent] = useState('');
     const [username, setUsername] = useState('');
-    const [appsScriptUrl] = useState('https://script.google.com/macros/s/AKfycbxjsgm96f3dc5vEBZOOS_nhJ0iCQHZVzzw0rXaEglJaeB6Mv3O6dcD2BSWpyCkaI3Oh/exec');
+    // The Apps Script URL has been updated to the one you provided.
+    const [appsScriptUrl] = useState('https://script.google.com/macros/s/AKfycbxdMYYs6OMaRlEkZfhVCW7dnMU6cv9Km-K2x-sseQBiYwlxRul4uJj3gRqq0vFjncDc/exec');
     const [currentWeek, setCurrentWeek] = useState(0);
 
     const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTDvan0KHZpX7RT7ZTPOBZDvBweF8V82caTcqTIPDuEnhJNmLFVL8QON6IZJCaBepJY1EjL1zBYYsuf/pub?gid=0&single=true&output=csv';
@@ -256,7 +257,8 @@
         }
       } catch (e) {
         console.error("Error submitting picks: ", e);
-        setModalContent("A network error occurred while submitting your picks. Please check your internet connection.");
+        // This is a more specific error message to help the user debug their Apps Script
+        setModalContent("A network error occurred while submitting your picks. Please check your Google Apps Script logs for a detailed error message.");
         setModalOpen(true);
       }
     };
