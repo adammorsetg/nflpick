@@ -92,59 +92,51 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
+        
         // Global variables provided by the environment
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
+        
         // --- Firebase Initialization & Authentication ---
         let app, db, auth;
         let userId = null;
-        let isAuthReady = false;
+        let isAppReady = false;
 
-        try {
-            app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-            console.log("Firebase initialized.");
-            
-            // This listener will fire whenever the authentication state changes
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    userId = user.uid;
+        async function initFirebase() {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                let userCredential;
+                if (initialAuthToken) {
+                    console.log("Attempting sign-in with custom token...");
+                    userCredential = await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    console.log("Attempting anonymous sign-in...");
+                    userCredential = await signInAnonymously(auth);
+                }
+
+                if (userCredential.user) {
+                    userId = userCredential.user.uid;
                     document.getElementById('userIdDisplay').textContent = userId;
-                    isAuthReady = true;
+                    isAppReady = true;
                     console.log("User authenticated:", userId);
                     await loadPicks();
+                    await loadGames();
                 } else {
-                    console.error("No user is signed in.");
-                    isAuthReady = true; // Mark as ready even if no user
+                    throw new Error("Authentication failed: No user object returned.");
                 }
-            });
-
-            // This new block handles authentication for both environments
-            // If the special token exists, use it. Otherwise, use anonymous sign-in
-            // which works on any static hosting provider like GitHub Pages.
-            if (initialAuthToken) {
-                signInWithCustomToken(auth, initialAuthToken).catch((error) => {
-                    console.error("Custom token sign-in failed:", error);
-                    showModal('Authentication failed. Please try again.');
-                });
-            } else {
-                signInAnonymously(auth).catch((error) => {
-                    console.error("Anonymous sign-in failed:", error);
-                    showModal('Failed to sign in. Please try again.');
-                });
+            } catch (error) {
+                console.error("Failed to initialize the application:", error);
+                showModal(`Failed to initialize the app. Reason: ${error.message}.`);
+                document.getElementById('userIdDisplay').textContent = 'Error';
             }
-
-        } catch (error) {
-            console.error("Failed to initialize Firebase:", error);
-            showModal('Failed to initialize the application. Please check the configuration.');
         }
-
+        
         // --- UI Elements ---
         const gameListEl = document.getElementById('gameList');
         const submitButton = document.getElementById('submitButton');
@@ -297,9 +289,8 @@
         }
 
         async function loadPicks() {
-            if (!isAuthReady) {
-                console.log("Authentication not ready, retrying loadPicks...");
-                setTimeout(loadPicks, 500);
+            if (!isAppReady) {
+                console.log("App is not ready, cannot load picks.");
                 return;
             }
             
@@ -354,6 +345,11 @@
         }
 
         submitButton.addEventListener('click', async () => {
+            if (!isAppReady) {
+                showModal('The app is not ready yet. Please wait a moment and try again.');
+                return;
+            }
+
             const now = new Date();
             if (now > deadlineDate) {
                 showModal('The deadline to submit picks has passed.');
@@ -363,11 +359,6 @@
 
             if (selectedPicks.size !== 5) {
                 showModal('Please select exactly 5 games before submitting.');
-                return;
-            }
-
-            if (!isAuthReady) {
-                showModal('Authentication not ready. Please wait a moment and try again.');
                 return;
             }
 
@@ -400,6 +391,10 @@
         });
         
         clearButton.addEventListener('click', () => {
+            if (!isAppReady) {
+                showModal('The app is not ready yet. Please wait a moment and try again.');
+                return;
+            }
             selectedPicks.clear();
             document.querySelectorAll('input[type="radio"]').forEach(radio => {
                 if (!hasSubmitted) {
@@ -410,14 +405,14 @@
         });
 
         saveUsernameButton.addEventListener('click', async () => {
-            const username = usernameInput.value.trim();
-            if (username === '') {
-                showModal('Please enter a username.');
+            if (!isAppReady) {
+                showModal('The app is not ready yet. Please wait a moment and try again.');
                 return;
             }
 
-            if (!isAuthReady) {
-                showModal('Authentication not ready. Please wait a moment and try again.');
+            const username = usernameInput.value.trim();
+            if (username === '') {
+                showModal('Please enter a username.');
                 return;
             }
 
@@ -435,11 +430,10 @@
             }
         });
 
-        // Initial render
+        // Initial render: start the app initialization process
         document.addEventListener('DOMContentLoaded', () => {
-            loadGames();
+            initFirebase();
         });
     </script>
 </body>
 </html>
-
