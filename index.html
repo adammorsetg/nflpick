@@ -111,7 +111,8 @@
         }
 
         // --- Application State and Logic ---
-        let selectedPicks = new Set();
+        // Changed to a Map to reliably store picks by game ID.
+        let selectedPicks = new Map();
         let hasSubmitted = false;
         let games = []; // Will hold the games loaded from the data source
         const deadlineDate = new Date('2025-09-06T18:00:00-05:00'); // 6 PM CST on Saturday, Sep 6, 2025
@@ -187,16 +188,18 @@
                 return dateA - dateB;
             });
             
-            // Remove any picks for games that have already started
-            const oldPicks = Array.from(selectedPicks);
-            selectedPicks.clear();
-            oldPicks.forEach(pick => {
-                const game = games.find(g => g.id === pick.gameId);
-                const gameDate = new Date(`2025 ${game.date.split(', ')[1]} ${game.time.replace(' CST', '')}`);
-                if (now < gameDate) {
-                    selectedPicks.add(pick);
+            // Purge any picks that are for games that have already started.
+            const newPicks = new Map();
+            for (const [gameId, team] of selectedPicks.entries()) {
+                const game = games.find(g => g.id === gameId);
+                if (game) {
+                    const gameDate = new Date(`2025 ${game.date.split(', ')[1]} ${game.time.replace(' CST', '')}`);
+                    if (now < gameDate) {
+                        newPicks.set(gameId, team);
+                    }
                 }
-            });
+            }
+            selectedPicks = newPicks;
 
             sortedGames.forEach(game => {
                 const gameDate = new Date(`2025 ${game.date.split(', ')[1]} ${game.time.replace(' CST', '')}`);
@@ -212,11 +215,11 @@
                     </div>
                     <div class="flex space-x-4">
                         <label class="flex items-center space-x-2 cursor-pointer ${hasGameStarted || hasSubmitted ? 'opacity-50 cursor-not-allowed' : ''}">
-                            <input type="radio" name="game-${game.id}" value="${game.away}" data-game-id="${game.id}" data-team="${game.away}" class="form-radio text-green-500 w-4 h-4" ${hasGameStarted || hasSubmitted ? 'disabled' : ''} ${selectedPicks.has({ gameId: game.id, team: game.away }) ? 'checked' : ''}>
+                            <input type="radio" name="game-${game.id}" value="${game.away}" data-game-id="${game.id}" data-team="${game.away}" class="form-radio text-green-500 w-4 h-4" ${hasGameStarted || hasSubmitted ? 'disabled' : ''} ${selectedPicks.get(game.id) === game.away ? 'checked' : ''}>
                             <span class="text-white">${game.away}</span>
                         </label>
                         <label class="flex items-center space-x-2 cursor-pointer ${hasGameStarted || hasSubmitted ? 'opacity-50 cursor-not-allowed' : ''}">
-                            <input type="radio" name="game-${game.id}" value="${game.home}" data-game-id="${game.id}" data-team="${game.home}" class="form-radio text-green-500 w-4 h-4" ${hasGameStarted || hasSubmitted ? 'disabled' : ''} ${selectedPicks.has({ gameId: game.id, team: game.home }) ? 'checked' : ''}>
+                            <input type="radio" name="game-${game.id}" value="${game.home}" data-game-id="${game.id}" data-team="${game.home}" class="form-radio text-green-500 w-4 h-4" ${hasGameStarted || hasSubmitted ? 'disabled' : ''} ${selectedPicks.get(game.id) === game.home ? 'checked' : ''}>
                             <span class="text-white">${game.home}</span>
                         </label>
                     </div>
@@ -230,16 +233,8 @@
                         const gameId = e.target.dataset.gameId;
                         const team = e.target.dataset.team;
                         
-                        // Find the previous pick for this game and remove it from the set
-                        for (let pick of selectedPicks) {
-                            if (pick.gameId === gameId) {
-                                selectedPicks.delete(pick);
-                                break;
-                            }
-                        }
-                        
-                        // Add the new pick
-                        selectedPicks.add({ gameId, team });
+                        // Add the new pick to the Map, which automatically replaces any old pick for this game.
+                        selectedPicks.set(gameId, team);
                         updatePicksCount();
                     });
                 });
@@ -261,10 +256,9 @@
             }
             
             // Check if any selected picks are for games that have already started
-            const picksArray = Array.from(selectedPicks);
             let hasInvalidPick = false;
-            for (const pick of picksArray) {
-                const game = games.find(g => g.id === pick.gameId);
+            for (const [gameId, team] of selectedPicks.entries()) {
+                const game = games.find(g => g.id === gameId);
                 const gameDate = new Date(`2025 ${game.date.split(', ')[1]} ${game.time.replace(' CST', '')}`);
                 if (now > gameDate) {
                     hasInvalidPick = true;
@@ -289,7 +283,7 @@
             const data = {
                 timestamp: new Date().toISOString(),
                 username: username,
-                picks: picksArray
+                picks: Array.from(selectedPicks.entries()).map(([gameId, team]) => ({ gameId, team }))
             };
 
             try {
