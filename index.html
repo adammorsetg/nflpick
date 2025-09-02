@@ -186,6 +186,17 @@
                 const dateB = new Date(`2025 ${b.date.split(', ')[1]} ${b.time.replace(' CST', '')}`);
                 return dateA - dateB;
             });
+            
+            // Remove any picks for games that have already started
+            const oldPicks = Array.from(selectedPicks);
+            selectedPicks.clear();
+            oldPicks.forEach(pick => {
+                const game = games.find(g => g.id === pick.gameId);
+                const gameDate = new Date(`2025 ${game.date.split(', ')[1]} ${game.time.replace(' CST', '')}`);
+                if (now < gameDate) {
+                    selectedPicks.add(pick);
+                }
+            });
 
             sortedGames.forEach(game => {
                 const gameDate = new Date(`2025 ${game.date.split(', ')[1]} ${game.time.replace(' CST', '')}`);
@@ -201,11 +212,11 @@
                     </div>
                     <div class="flex space-x-4">
                         <label class="flex items-center space-x-2 cursor-pointer ${hasGameStarted || hasSubmitted ? 'opacity-50 cursor-not-allowed' : ''}">
-                            <input type="radio" name="game-${game.id}" value="${game.away}" data-game-id="${game.id}" data-team="${game.away}" class="form-radio text-green-500 w-4 h-4" ${hasGameStarted || hasSubmitted ? 'disabled' : ''}>
+                            <input type="radio" name="game-${game.id}" value="${game.away}" data-game-id="${game.id}" data-team="${game.away}" class="form-radio text-green-500 w-4 h-4" ${hasGameStarted || hasSubmitted ? 'disabled' : ''} ${selectedPicks.has({ gameId: game.id, team: game.away }) ? 'checked' : ''}>
                             <span class="text-white">${game.away}</span>
                         </label>
                         <label class="flex items-center space-x-2 cursor-pointer ${hasGameStarted || hasSubmitted ? 'opacity-50 cursor-not-allowed' : ''}">
-                            <input type="radio" name="game-${game.id}" value="${game.home}" data-game-id="${game.id}" data-team="${game.home}" class="form-radio text-green-500 w-4 h-4" ${hasGameStarted || hasSubmitted ? 'disabled' : ''}>
+                            <input type="radio" name="game-${game.id}" value="${game.home}" data-game-id="${game.id}" data-team="${game.home}" class="form-radio text-green-500 w-4 h-4" ${hasGameStarted || hasSubmitted ? 'disabled' : ''} ${selectedPicks.has({ gameId: game.id, team: game.home }) ? 'checked' : ''}>
                             <span class="text-white">${game.home}</span>
                         </label>
                     </div>
@@ -248,6 +259,24 @@
                 showModal('Please select exactly 5 games before submitting.');
                 return;
             }
+            
+            // Check if any selected picks are for games that have already started
+            const picksArray = Array.from(selectedPicks);
+            let hasInvalidPick = false;
+            for (const pick of picksArray) {
+                const game = games.find(g => g.id === pick.gameId);
+                const gameDate = new Date(`2025 ${game.date.split(', ')[1]} ${game.time.replace(' CST', '')}`);
+                if (now > gameDate) {
+                    hasInvalidPick = true;
+                    break;
+                }
+            }
+
+            if (hasInvalidPick) {
+                showModal('One or more of your selected games has already started. Please deselect them and try again.');
+                return;
+            }
+
 
             const username = usernameInput.value.trim();
             if (username === '') {
@@ -256,8 +285,6 @@
             }
             
             statusMessageEl.textContent = 'Submitting picks...';
-
-            const picksArray = Array.from(selectedPicks);
 
             const data = {
                 timestamp: new Date().toISOString(),
