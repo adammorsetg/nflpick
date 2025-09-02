@@ -76,6 +76,30 @@
             transform: none;
             box-shadow: none;
         }
+
+        /* Confirmation Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.75);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background-color: #2d3748;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.3);
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+        }
     </style>
 </head>
 
@@ -117,11 +141,25 @@
 
     </div>
 
+    <!-- Confirmation Modal -->
+    <div id="confirmationModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold mb-4">Confirm Your Picks</h2>
+            <p class="mb-2 text-gray-300">Username: <span id="confirmUsername" class="font-bold"></span></p>
+            <ul id="confirmPicksList" class="text-left space-y-2 mb-6"></ul>
+            <div class="flex justify-center space-x-4">
+                <button id="cancelButton" class="px-6 py-3 rounded-full bg-gray-600 text-white font-bold hover:bg-gray-700">Cancel</button>
+                <button id="confirmButton" class="px-6 py-3 rounded-full bg-green-600 text-white font-bold hover:bg-green-700">Confirm</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Placeholder for your Google Apps Script Web App URL
-        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxOoR163FHKkj--YCi61aEtId7k6QFCDwod5fUWsnyd4LXVRIuVJpBeTKxE3uPRLXDKlw/exec';
+        const APPS_SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE';
 
         let games = []; // Global variable to store fetched game data
+        let selectedPicks = [];
 
         // Message box for user feedback
         const messageBox = document.getElementById('messageBox');
@@ -142,7 +180,7 @@
             const loadingIndicator = document.getElementById('loadingIndicator');
             loadingIndicator.classList.remove('hidden');
             try {
-                const response = await fetch('https://docs.google.com/spreadsheets/d/e/2PACX-1vTDvan0KHZpX7RT7ZTPOBZDvBweF8V82caTcqTIPDuEnhJNmLFVL8QON6IZJCaBepJY1EjL1zBYYsuf/pub?gid=0&single=true&output=csv');
+                const response = await fetch('https://docs.google.com/spreadsheets/d/e/2PACX-1vTDvan0KHZpX7RT7ZTPOBZDvBweF8V8QON6IZJCaBepJY1EjL1zBYYsuf/pub?gid=0&single=true&output=csv');
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
@@ -183,10 +221,9 @@
         }
 
         // Function to render the game list and set up event listeners
-        function renderGames(gamesList, selectedPicks = []) {
+        function renderGames(gamesList) {
             gamesList.innerHTML = '';
-            const isSubmitted = selectedPicks.length > 0;
-
+            
             if (games.length === 0) {
                 gamesList.innerHTML = '<p class="text-center text-red-400">No game data available.</p>';
                 return;
@@ -196,10 +233,9 @@
                 const gameDate = new Date(`${game.date} ${game.time} CST`);
                 const now = new Date();
                 const isPastGame = now > gameDate;
-                const isSelected = selectedPicks.find(p => p.gameId === game.id);
                 
                 const gameCard = document.createElement('div');
-                gameCard.className = `game-card flex flex-col sm:flex-row items-center justify-between transition-all duration-300 ${isPastGame ? 'past-game' : ''} ${isSelected ? 'selected' : ''}`;
+                gameCard.className = `game-card flex flex-col sm:flex-row items-center justify-between transition-all duration-300 ${isPastGame ? 'past-game' : ''}`;
                 gameCard.id = `game-${game.id}`;
 
                 gameCard.innerHTML = `
@@ -218,26 +254,25 @@
                     </div>
 
                     <div class="flex-grow flex justify-center sm:justify-end mt-4 sm:mt-0 space-x-2">
-                        <button type="button" data-game-id="${game.id}" data-team-pick="${game.away}" class="pick-button flex-1 py-2 px-4 rounded-full text-sm font-medium ${isSelected && isSelected.pick === game.away ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} ${isSubmitted || isPastGame ? 'disabled' : ''}" ${isSubmitted || isPastGame ? 'disabled' : ''}>
+                        <button type="button" data-game-id="${game.id}" data-team-pick="${game.away}" class="pick-button flex-1 py-2 px-4 rounded-full text-sm font-medium bg-gray-700 hover:bg-gray-600 ${isPastGame ? 'disabled' : ''}" ${isPastGame ? 'disabled' : ''}>
                             <i class="fas fa-check-circle mr-1"></i> Pick ${game.away}
                         </button>
-                        <button type="button" data-game-id="${game.id}" data-team-pick="${game.home}" class="pick-button flex-1 py-2 px-4 rounded-full text-sm font-medium ${isSelected && isSelected.pick === game.home ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} ${isSubmitted || isPastGame ? 'disabled' : ''}" ${isSubmitted || isPastGame ? 'disabled' : ''}>
+                        <button type="button" data-game-id="${game.id}" data-team-pick="${game.home}" class="pick-button flex-1 py-2 px-4 rounded-full text-sm font-medium bg-gray-700 hover:bg-gray-600 ${isPastGame ? 'disabled' : ''}" ${isPastGame ? 'disabled' : ''}>
                             <i class="fas fa-check-circle mr-1"></i> Pick ${game.home}
                         </button>
                     </div>
                 `;
                 gamesList.appendChild(gameCard);
 
-                // Add event listener to each button if picks haven't been submitted and the game is not in the past
-                if (!isSubmitted && !isPastGame) {
+                // Add event listener to each button if the game is not in the past
+                if (!isPastGame) {
                     gameCard.querySelectorAll('button').forEach(button => {
                         button.addEventListener('click', () => handlePick(game.id, button.dataset.teamPick));
                     });
                 }
             });
+            updateUI();
         }
-
-        let selectedPicks = [];
 
         function handlePick(gameId, teamPick) {
             // Unselect if already selected
@@ -279,6 +314,69 @@
             showMessage(`${selectedPicks.length} of 5 games selected.`);
         }
 
+        function showConfirmationModal() {
+            const username = document.getElementById('username').value;
+            const confirmUsername = document.getElementById('confirmUsername');
+            const confirmPicksList = document.getElementById('confirmPicksList');
+            const confirmationModal = document.getElementById('confirmationModal');
+            
+            confirmUsername.textContent = username;
+            confirmPicksList.innerHTML = '';
+            
+            selectedPicks.forEach(pick => {
+                const game = games.find(g => g.id === pick.gameId);
+                const listItem = document.createElement('li');
+                listItem.textContent = `${game.away} vs ${game.home}: Picked ${pick.pick}`;
+                confirmPicksList.appendChild(listItem);
+            });
+            
+            confirmationModal.classList.remove('hidden');
+        }
+
+        function hideConfirmationModal() {
+            const confirmationModal = document.getElementById('confirmationModal');
+            confirmationModal.classList.add('hidden');
+        }
+
+        async function submitPicks() {
+            const username = document.getElementById('username').value;
+            const submitButton = document.getElementById('submitButton');
+
+            hideConfirmationModal();
+            submitButton.disabled = true;
+            document.getElementById('loadingIndicator').classList.remove('hidden');
+
+            try {
+                // Prepare data for the Google Apps Script
+                const payload = {
+                    username: username,
+                    picks: selectedPicks,
+                    timestamp: new Date().toISOString()
+                };
+
+                const response = await fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // Required for Google Apps Script
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload),
+                });
+                
+                showMessage('Picks submitted successfully! Please refresh the page to see your submitted picks.', 'success');
+                document.getElementById('picksForm').reset();
+                selectedPicks = [];
+                updateUI();
+                
+            } catch (e) {
+                console.error("Error submitting picks: ", e);
+                showMessage('Failed to submit picks. Please try again.', 'error');
+            } finally {
+                submitButton.disabled = false;
+                document.getElementById('loadingIndicator').classList.add('hidden');
+            }
+        }
+
         const gamesList = document.getElementById('gamesList');
         
         // Initial setup
@@ -293,9 +391,12 @@
         document.getElementById('picksForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const submitButton = document.getElementById('submitButton');
             const username = document.getElementById('username').value;
-            
+            if (!username) {
+                showMessage('Please enter a username.', 'error');
+                return;
+            }
+
             if (selectedPicks.length !== 5) {
                 showMessage('You must select exactly 5 games.', 'error');
                 return;
@@ -328,40 +429,13 @@
                 }
             }
             
-            submitButton.disabled = true;
-            document.getElementById('loadingIndicator').classList.remove('hidden');
-            
-            try {
-                // Prepare data for the Google Apps Script
-                const payload = {
-                    username: username,
-                    picks: selectedPicks,
-                    timestamp: new Date().toISOString()
-                };
-
-                const response = await fetch(APPS_SCRIPT_URL, {
-                    method: 'POST',
-                    mode: 'no-cors', // Required for Google Apps Script
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(payload),
-                });
-                
-                // Since 'no-cors' is used, we cannot check response.ok, so we just assume success.
-                showMessage('Picks submitted successfully! Please refresh the page to see your submitted picks.', 'success');
-                document.getElementById('picksForm').reset();
-                selectedPicks = [];
-                updateUI();
-                
-            } catch (e) {
-                console.error("Error submitting picks: ", e);
-                showMessage('Failed to submit picks. Please try again.', 'error');
-            } finally {
-                submitButton.disabled = false;
-                document.getElementById('loadingIndicator').classList.add('hidden');
-            }
+            // Show the confirmation modal
+            showConfirmationModal();
         });
+
+        // Add event listeners for the confirmation buttons
+        document.getElementById('confirmButton').addEventListener('click', submitPicks);
+        document.getElementById('cancelButton').addEventListener('click', hideConfirmationModal);
 
         window.onload = init;
     </script>
