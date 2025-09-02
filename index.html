@@ -46,12 +46,8 @@
         
         <!-- User Status Section -->
         <div class="bg-gray-800 rounded-lg shadow-lg p-4 mb-6 text-center">
-            <p class="text-gray-400 mb-2">Your User ID: <span id="userIdDisplay" class="font-mono text-gray-200">Loading...</span></p>
             <div class="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 mt-4">
                 <input id="usernameInput" type="text" placeholder="Enter your username" class="bg-gray-700 text-white placeholder-gray-400 rounded-lg p-2 w-full sm:w-1/2 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-200" maxlength="20">
-                <button id="saveUsernameButton" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto">
-                    Save Username
-                </button>
             </div>
             <p id="usernameDisplay" class="text-lg font-bold text-green-400 mt-4 hidden"></p>
         </div>
@@ -90,52 +86,9 @@
         </div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // Global variables provided by the environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        
-        // --- Firebase Initialization & Authentication ---
-        let app, db, auth;
-        let userId = null;
-        let isAppReady = false;
-
-        async function initFirebase() {
-            try {
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                
-                let userCredential;
-                if (initialAuthToken) {
-                    console.log("Attempting sign-in with custom token...");
-                    userCredential = await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    console.log("Attempting anonymous sign-in...");
-                    userCredential = await signInAnonymously(auth);
-                }
-
-                if (userCredential.user) {
-                    userId = userCredential.user.uid;
-                    document.getElementById('userIdDisplay').textContent = userId;
-                    isAppReady = true;
-                    console.log("User authenticated:", userId);
-                    await loadPicks();
-                    await loadGames();
-                } else {
-                    throw new Error("Authentication failed: No user object returned.");
-                }
-            } catch (error) {
-                console.error("Failed to initialize the application:", error);
-                showModal(`Failed to initialize the app. Reason: ${error.message}.`);
-                document.getElementById('userIdDisplay').textContent = 'Error';
-            }
-        }
+    <script>
+        // --- IMPORTANT: Paste your Google Apps Script Web App URL here ---
+        const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzrbD-kbrMf-IcedTNzN12pCVoa8BoTj4wEI9IKydkNzujp5BQHWp4rW49XoScJvQNM/exec';
         
         // --- UI Elements ---
         const gameListEl = document.getElementById('gameList');
@@ -147,8 +100,6 @@
         const modalMessageEl = document.getElementById('modalMessage');
         const modalCloseButton = document.getElementById('modalCloseButton');
         const usernameInput = document.getElementById('usernameInput');
-        const saveUsernameButton = document.getElementById('saveUsernameButton');
-        const usernameDisplay = document.getElementById('usernameDisplay');
 
         modalCloseButton.onclick = () => {
             messageModal.classList.add('hidden');
@@ -162,9 +113,7 @@
         // --- Application State and Logic ---
         let selectedPicks = new Set();
         let hasSubmitted = false;
-        let hasUsername = false;
         let games = []; // Will hold the games loaded from the data source
-        const currentWeekId = 'week-1'; // Static ID for this example
         const deadlineDate = new Date('2025-09-06T18:00:00-05:00'); // 6 PM CST on Saturday, Sep 6, 2025
 
         function updatePicksCount() {
@@ -173,7 +122,6 @@
             clearButton.disabled = selectedPicks.size === 0 || hasSubmitted;
         }
 
-        // This function now fetches the game data from a CSV URL.
         async function loadGames() {
             statusMessageEl.textContent = 'Loading game data...';
             try {
@@ -288,68 +236,7 @@
             updatePicksCount();
         }
 
-        async function loadPicks() {
-            if (!isAppReady) {
-                console.log("App is not ready, cannot load picks.");
-                return;
-            }
-            
-            statusMessageEl.textContent = 'Loading your picks...';
-            try {
-                const picksDocRef = doc(db, `artifacts/${appId}/users/${userId}/picks`, currentWeekId);
-                const picksDoc = await getDoc(picksDocRef);
-
-                if (picksDoc.exists()) {
-                    hasSubmitted = true;
-                    const picksData = picksDoc.data();
-                    const picksArray = picksData.picks || [];
-                    const username = picksData.username || '';
-                    
-                    // Populate the UI with submitted picks
-                    picksArray.forEach(pick => {
-                        const radio = document.querySelector(`input[data-game-id="${pick.gameId}"][data-team="${pick.team}"]`);
-                        if (radio) {
-                            radio.checked = true;
-                            radio.disabled = true;
-                        }
-                    });
-                    
-                    selectedPicks = new Set(picksArray);
-                    
-                    if (username) {
-                        usernameInput.value = username;
-                        usernameInput.disabled = true;
-                        saveUsernameButton.disabled = true;
-                        usernameDisplay.textContent = `Username: ${username}`;
-                        usernameDisplay.classList.remove('hidden');
-                    }
-
-                    statusMessageEl.textContent = `Your picks for Week 1 have been submitted.`;
-                    showModal('Your picks have already been submitted and cannot be changed.');
-                    
-                } else {
-                    statusMessageEl.textContent = 'Please select 5 games to submit your picks.';
-                }
-            } catch (error) {
-                console.error("Error loading picks:", error);
-                statusMessageEl.textContent = 'Error loading your picks. Please try again.';
-            }
-
-            // Disable all radio buttons if picks have been submitted or deadline passed
-            if (hasSubmitted || new Date() > deadlineDate) {
-                document.querySelectorAll('input[type="radio"]').forEach(radio => radio.disabled = true);
-                submitButton.disabled = true;
-            }
-            
-            updatePicksCount();
-        }
-
         submitButton.addEventListener('click', async () => {
-            if (!isAppReady) {
-                showModal('The app is not ready yet. Please wait a moment and try again.');
-                return;
-            }
-
             const now = new Date();
             if (now > deadlineDate) {
                 showModal('The deadline to submit picks has passed.');
@@ -367,72 +254,57 @@
                 showModal('Please enter a username before submitting.');
                 return;
             }
+            
+            statusMessageEl.textContent = 'Submitting picks...';
 
-            // Convert set to array for saving to Firestore
             const picksArray = Array.from(selectedPicks);
 
+            const data = {
+                timestamp: new Date().toISOString(),
+                username: username,
+                picks: picksArray
+            };
+
             try {
-                const picksDocRef = doc(db, `artifacts/${appId}/users/${userId}/picks`, currentWeekId);
-                await setDoc(picksDocRef, { picks: picksArray, username: username });
+                const response = await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // Required for Google Apps Script to work
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data),
+                });
+                
+                // Note: The response is not readable due to 'no-cors' mode.
+                // We'll assume success if the request was sent without error.
+                
                 hasSubmitted = true;
                 submitButton.disabled = true;
                 usernameInput.disabled = true;
-                saveUsernameButton.disabled = true;
                 document.querySelectorAll('input[type="radio"]').forEach(radio => radio.disabled = true);
                 showModal('Picks submitted successfully!');
                 statusMessageEl.textContent = 'Your picks for Week 1 have been submitted.';
-                usernameDisplay.textContent = `Username: ${username}`;
-                usernameDisplay.classList.remove('hidden');
-
+                
             } catch (error) {
                 console.error("Error submitting picks:", error);
                 showModal('Failed to submit picks. Please try again.');
+                statusMessageEl.textContent = 'Failed to submit picks.';
             }
         });
         
         clearButton.addEventListener('click', () => {
-            if (!isAppReady) {
-                showModal('The app is not ready yet. Please wait a moment and try again.');
+            if (hasSubmitted) {
+                showModal('Cannot clear picks after submission.');
                 return;
             }
             selectedPicks.clear();
-            document.querySelectorAll('input[type="radio"]').forEach(radio => {
-                if (!hasSubmitted) {
-                    radio.checked = false;
-                }
-            });
+            document.querySelectorAll('input[type="radio"]').forEach(radio => radio.checked = false);
             updatePicksCount();
         });
-
-        saveUsernameButton.addEventListener('click', async () => {
-            if (!isAppReady) {
-                showModal('The app is not ready yet. Please wait a moment and try again.');
-                return;
-            }
-
-            const username = usernameInput.value.trim();
-            if (username === '') {
-                showModal('Please enter a username.');
-                return;
-            }
-
-            try {
-                const picksDocRef = doc(db, `artifacts/${appId}/users/${userId}/picks`, currentWeekId);
-                await updateDoc(picksDocRef, { username: username });
-                usernameInput.disabled = true;
-                saveUsernameButton.disabled = true;
-                usernameDisplay.textContent = `Username: ${username}`;
-                usernameDisplay.classList.remove('hidden');
-                showModal('Username saved successfully!');
-            } catch (error) {
-                console.error("Error saving username:", error);
-                showModal('Failed to save username. Please try again.');
-            }
-        });
-
+        
         // Initial render: start the app initialization process
         document.addEventListener('DOMContentLoaded', () => {
-            initFirebase();
+            loadGames();
         });
     </script>
 </body>
