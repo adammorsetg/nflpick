@@ -111,6 +111,7 @@
             auth = getAuth(app);
             console.log("Firebase initialized.");
             
+            // This listener will fire whenever the authentication state changes
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     userId = user.uid;
@@ -120,26 +121,23 @@
                     await loadPicks();
                 } else {
                     console.error("No user is signed in.");
-                    // Sign in anonymously if no token is available
-                    if (!initialAuthToken) {
-                        try {
-                            await signInAnonymously(auth);
-                            console.log("Signed in anonymously.");
-                        } catch (error) {
-                            console.error("Anonymous sign-in failed:", error);
-                            showModal('Failed to sign in. Please try again.');
-                        }
-                    }
+                    isAuthReady = true; // Mark as ready even if no user
                 }
             });
 
+            // This new block handles authentication for both environments
+            // If the special token exists, use it. Otherwise, use anonymous sign-in
+            // which works on any static hosting provider like GitHub Pages.
             if (initialAuthToken) {
                 signInWithCustomToken(auth, initialAuthToken).catch((error) => {
                     console.error("Custom token sign-in failed:", error);
                     showModal('Authentication failed. Please try again.');
                 });
             } else {
-                signInAnonymously(auth);
+                signInAnonymously(auth).catch((error) => {
+                    console.error("Anonymous sign-in failed:", error);
+                    showModal('Failed to sign in. Please try again.');
+                });
             }
 
         } catch (error) {
