@@ -138,6 +138,7 @@
                     <i class="fas fa-paper-plane mr-2"></i> Submit Picks
                 </button>
             </div>
+             <div id="messageBoxBottom" class="p-4 mb-4 rounded-lg text-sm hidden"></div>
         </form>
 
     </div>
@@ -161,8 +162,7 @@
         // URL for the list of usernames
         const USERNAMES_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRZFTu66OZrQ5aQCMdFKSVeeMysGJZFgF60WFWYCB04rbzbgEcCAghEej2Xu3VBUNIEGOVhGNoTQROM/pub?gid=0&single=true&output=csv';
         // This URL should point to a Google Sheet containing the weekly submissions
-        // You would need to create a public, read-only URL for the sheet that your Apps Script writes to.
-        const SUBMISSIONS_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRf8YMslnxjn2lCZ5-D_fsppazB3mW2Y6GxqZOH-__6Pu8fzziomJo_FHxzaJDumBk8Rb-6lpfEKJJC/pub?gid=0&single=true&output=csv';
+        const SUBMISSIONS_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRf8YMslnxjn2lCZ5-D_fsppazB3mW2Y6GxqZOH-__6Pu8fzziomJo_FHxzaJDumBk8Rb-6lpfEKJJC/pub?output=csv';
 
 
         let games = []; // Global variable to store fetched game data
@@ -171,16 +171,20 @@
 
         // Message box for user feedback
         const messageBox = document.getElementById('messageBox');
+        const messageBoxBottom = document.getElementById('messageBoxBottom');
         function showMessage(message, type = 'info') {
-            messageBox.textContent = message;
-            messageBox.className = `p-4 mb-4 rounded-lg text-sm block`;
-            if (type === 'success') {
-                messageBox.classList.add('bg-green-600', 'text-white');
-            } else if (type === 'error') {
-                messageBox.classList.add('bg-red-600', 'text-white');
-            } else {
-                messageBox.classList.add('bg-blue-600', 'text-white');
-            }
+            const boxes = [messageBox, messageBoxBottom];
+            boxes.forEach(box => {
+                box.textContent = message;
+                box.className = `p-4 mb-4 rounded-lg text-sm block`;
+                if (type === 'success') {
+                    box.classList.add('bg-green-600', 'text-white');
+                } else if (type === 'error') {
+                    box.classList.add('bg-red-600', 'text-white');
+                } else {
+                    box.classList.add('bg-blue-600', 'text-white');
+                }
+            });
         }
 
         // Function to fetch and parse the CSV data for games
@@ -232,7 +236,7 @@
                 }
                 const csvText = await response.text();
                 // Perform a case-insensitive check
-                const submissions = csvText.trim().split('\n').map(line => line.split(',')[0].trim().toLowerCase());
+                const submissions = csvText.trim().split('\n').map(line => line.split(',')[1].trim().toLowerCase());
                 return submissions.includes(username.toLowerCase());
             } catch (error) {
                 console.error('Error checking for duplicate submission:', error);
