@@ -130,7 +130,9 @@
             <div class="flex items-end justify-end space-x-4 mt-8">
                 <div class="flex-grow max-w-xs">
                     <label for="username" class="block text-sm font-medium text-gray-300 mb-1">Your Username</label>
-                    <input type="text" id="username" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition" required>
+                    <select id="username" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition" required>
+                        <option value="">Loading usernames...</option>
+                    </select>
                 </div>
                 <button type="submit" id="submitButton" class="pick-button px-8 py-4 rounded-full bg-blue-600 text-white font-bold text-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <i class="fas fa-paper-plane mr-2"></i> Submit Picks
@@ -156,6 +158,8 @@
     <script>
         // Placeholder for your Google Apps Script Web App URL
         const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxOoR163FHKkj--YCi61aEtId7k6QFCDwod5fUWsnyd4LXVRIuVJpBeTKxE3uPRLXDKlw/exec';
+        // URL for the list of usernames
+        const USERNAMES_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRZFTu66OZrQ5aQCMdFKSVeeMysGJZFgF60WFWYCB04rbzbgEcCAghEej2Xu3VBUNIEGOVhGNoTQROM/pub?gid=0&single=true&output=csv';
 
         let games = []; // Global variable to store fetched game data
         let selectedPicks = [];
@@ -174,7 +178,7 @@
             }
         }
 
-        // Function to fetch and parse the CSV data
+        // Function to fetch and parse the CSV data for games
         async function fetchGameData() {
             const loadingIndicator = document.getElementById('loadingIndicator');
             loadingIndicator.classList.remove('hidden');
@@ -193,6 +197,36 @@
             } finally {
                 loadingIndicator.classList.add('hidden');
             }
+        }
+
+        // Function to fetch and parse the CSV data for usernames
+        async function fetchUsernames() {
+            try {
+                const response = await fetch(USERNAMES_URL);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const csvText = await response.text();
+                // Assumes the CSV is a single column of usernames
+                const usernames = csvText.trim().split('\n').filter(name => name.trim() !== '');
+                return usernames;
+            } catch (error) {
+                console.error('Error fetching usernames:', error);
+                showMessage('Failed to load usernames. Please try refreshing the page.', 'error');
+                return [];
+            }
+        }
+
+        // Function to populate the username dropdown
+        function populateUsernames(usernames) {
+            const usernameSelect = document.getElementById('username');
+            usernameSelect.innerHTML = '<option value="">Select a username</option>'; // Default empty option
+            usernames.forEach(username => {
+                const option = document.createElement('option');
+                option.value = username;
+                option.textContent = username;
+                usernameSelect.appendChild(option);
+            });
         }
 
         // Function to parse CSV text into an array of game objects
@@ -383,6 +417,10 @@
             games = await fetchGameData();
             if (games) {
                 renderGames(gamesList);
+            }
+            const usernames = await fetchUsernames();
+            if (usernames.length > 0) {
+                populateUsernames(usernames);
             }
         }
         
