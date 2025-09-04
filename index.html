@@ -321,7 +321,7 @@
                 // Add event listener to each button if the game is not in the past
                 if (!isPastGame) {
                     gameCard.querySelectorAll('button').forEach(button => {
-                        button.addEventListener('click', () => handlePick(game.id, button.dataset.team-pick));
+                        button.addEventListener('click', () => handlePick(game.id, button.dataset.teamPick));
                     });
                 }
             });
