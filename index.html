@@ -167,6 +167,7 @@
 
         let games = []; // Global variable to store fetched game data
         let selectedPicks = [];
+        let submittedUsernames = []; // New variable to store usernames that have submitted in this session
 
         // Message box for user feedback
         const messageBox = document.getElementById('messageBox');
@@ -224,13 +225,15 @@
         // Function to fetch and check for an existing submission for the selected user
         async function checkExistingSubmission(username) {
             try {
-                const response = await fetch(SUBMISSIONS_URL);
+                const url = `${SUBMISSIONS_URL}&_=${new Date().getTime()}`; // Add timestamp to bust cache
+                const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 const csvText = await response.text();
-                const submissions = csvText.trim().split('\n').map(line => line.split(',')[0].trim());
-                return submissions.includes(username);
+                // Perform a case-insensitive check
+                const submissions = csvText.trim().split('\n').map(line => line.split(',')[0].trim().toLowerCase());
+                return submissions.includes(username.toLowerCase());
             } catch (error) {
                 console.error('Error checking for duplicate submission:', error);
                 // Return false to allow submission in case the check fails
@@ -417,6 +420,9 @@
                     body: JSON.stringify(payload),
                 });
                 
+                // Add the submitted username to our local list
+                submittedUsernames.push(username.toLowerCase());
+                
                 showMessage('Picks submitted successfully! Please refresh the page to see your submitted picks.', 'success');
                 document.getElementById('picksForm').reset();
                 selectedPicks = [];
@@ -487,7 +493,13 @@
                 }
             }
             
-            // Check if user has already submitted
+            // Check if user has already submitted this session
+            if (submittedUsernames.includes(username.toLowerCase())) {
+                showMessage('You have already submitted your picks for this week.', 'error');
+                return;
+            }
+
+            // Check if user has already submitted from another device
             const isDuplicate = await checkExistingSubmission(username);
             if (isDuplicate) {
                 showMessage('You have already submitted your picks for this week.', 'error');
